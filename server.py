@@ -1341,6 +1341,47 @@ def get_terminal_output_legacy():
     formatted = [f"[{l['level']}] [{l['timestamp']}] {l['message']}" for l in all_logs[-50:]]
     return {"logs": formatted}
 
+@app.get("/terminal-stream")
+def get_terminal_stream(session_id: str, last_scanner_index: int = 0, last_automation_index: int = 0):
+    """Step 3: Real-time log streaming for both Scanner and Automation terminals."""
+    # Ensure session exists or return empty
+    if session_id not in terminal_sessions:
+        # Create a placeholder if it's the global pipeline
+        if session_id == "pipeline":
+            terminal_sessions["pipeline"] = {
+                "scanner_logs": [], 
+                "automation_logs": [], 
+                "status": "IDLE", 
+                "last_index_scanner": 0,
+                "last_index_automation": 0
+            }
+        else:
+            return {
+                "new_scanner_logs": [],
+                "new_automation_logs": [],
+                "last_scanner_index": last_scanner_index,
+                "last_automation_index": last_automation_index,
+                "status": "COMPLETED",
+                "found_count": 0
+            }
+
+    session = terminal_sessions[session_id]
+    
+    scanner_logs = session.get("scanner_logs", [])
+    automation_logs = session.get("automation_logs", [])
+    
+    new_scanner = scanner_logs[last_scanner_index:]
+    new_automation = automation_logs[last_automation_index:]
+    
+    return {
+        "new_scanner_logs": new_scanner,
+        "new_automation_logs": new_automation,
+        "last_scanner_index": last_scanner_index + len(new_scanner),
+        "last_automation_index": last_automation_index + len(new_automation),
+        "status": session.get("status", "RUNNING"),
+        "found_count": session.get("found_count", 0)
+    }
+
 @app.get("/vulnerabilities")
 def get_vulnerabilities():
     db = SessionLocal()

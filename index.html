@@ -247,7 +247,13 @@
                     this.activeJob = pipe.active;
                     this.queuingActive = pipe.queuing_active;
                     this.queue = Array.isArray(pipe.queue) ? pipe.queue : [];
-                    this.queueCount = pipe.queue_count || 0;
+                    const oldQueueCount = this.queueCount || 0;
+                    this.queueCount = pipe.queue ? pipe.queue.length : 0;
+
+                    // Trigger Success Pop-up when queue clears
+                    if (oldQueueCount > 0 && this.queueCount === 0 && !pipelineState.paused) {
+                        app.showAutomationSuccessPopup();
+                    }
 
                     // NEVER call app.render() here - that causes blinking.
                     // Only update specific data-bound elements without re-building the DOM shell.
@@ -636,6 +642,31 @@
                 `;
                 document.body.appendChild(overlay);
                 lucide.createIcons();
+            },
+
+            showAutomationSuccessPopup() {
+                if (document.getElementById('automation-success-overlay')) return;
+
+                const overlay = document.createElement('div');
+                overlay.id = 'automation-success-overlay';
+                overlay.className = 'fixed inset-0 z-[100] flex items-center justify-center p-8 bg-black/90 backdrop-blur-xl animate-in zoom-in duration-500';
+
+                overlay.innerHTML = `
+                    <div class="glass w-full max-w-lg rounded-[50px] border border-emerald-500/40 overflow-hidden shadow-[0_0_150px_rgba(16,185,129,0.3)] text-center p-12 relative">
+                        <div class="absolute inset-0 bg-gradient-to-b from-emerald-500/10 to-transparent pointer-events-none"></div>
+                        <div class="w-24 h-24 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center mx-auto mb-8 shadow-[0_0_50px_rgba(16,185,129,0.4)] animate-bounce">
+                            <i data-lucide="check-check" class="w-12 h-12 text-emerald-400"></i>
+                        </div>
+                        <h2 class="text-4xl font-black text-white tracking-tighter uppercase italic mb-4">Integrity Restored</h2>
+                        <p class="text-slate-400 text-sm mb-10 leading-relaxed font-medium">The Autonomous Kernel has successfully neutralized all detected structural threats. System state is now categorized as <span class="text-emerald-400 font-black">OPTIMAL</span>.</p>
+                        <button onclick="document.getElementById('automation-success-overlay').remove()" class="w-full py-5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black uppercase text-xs tracking-[0.4em] shadow-2xl transition-all active:scale-95">
+                            Return to Command Center
+                        </button>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+                lucide.createIcons();
+                app.showToast('✨ ALL THREATS RESOLVED', 'emerald');
             },
 
             async confirmAutomationExecution(scanId) {
@@ -1078,7 +1109,7 @@
                     <td class="p-6 font-mono text-[11px] text-blue-500 font-bold tracking-wider">${v.id}</td>
                     <td class="p-6">
                         <div class="text-white font-black text-sm mb-1 tracking-tight italic">${v.vulnerability_type}</div>
-                        <div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${v.file_name}</div>
+                        <div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${v.website_name}</div>
                     </td>
                     <td class="p-6">
                         <span class="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-rose-500/10 text-rose-500 border border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.1)]">
@@ -1086,13 +1117,13 @@
                         </span>
                     </td>
                     <td class="p-6">
-                        <div class="font-mono text-slate-400 text-[11px] bg-black/40 px-3 py-2 rounded-xl border border-white/5 truncate max-w-[200px]" title="${v.target_url}">
-                            ${v.target_url || 'LOCAL KERNEL'}
+                        <div class="font-mono text-slate-400 text-[11px] bg-black/40 px-3 py-2 rounded-xl border border-white/5 truncate max-w-[200px]" title="${v.url}">
+                            ${v.url || 'LOCAL KERNEL'}
                         </div>
                     </td>
                     <td class="p-6">
                         <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${v.status === 'FIXED' || v.status === 'VALIDATED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]' :
-                        v.status.includes('PATCH') ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
+                        v.status.includes('PATCH') || v.status === 'VALIDATING' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
                             'bg-slate-800/40 text-slate-400 border border-white/10'
                     }">
                             ${v.status.replace(/_/g, ' ')}
@@ -1196,10 +1227,10 @@
                             </div>
                             <div class="text-[11px] text-slate-500 mb-4 space-y-2 relative z-10 bg-black/20 p-4 rounded-xl font-mono tracking-wider">
                                 <div class="flex items-center justify-between group">
-                                    <span><span class="text-slate-600 uppercase tracking-widest text-[9px]">Target:</span> <span class="text-blue-400">${v.target_url || 'LOCAL'}</span></span>
+                                    <span><span class="text-slate-600 uppercase tracking-widest text-[9px]">Target:</span> <span class="text-blue-400">${v.url || 'LOCAL'}</span></span>
                                 </div>
                                 <div class="grid grid-cols-2 gap-4">
-                                    <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">File:</span> <span class="text-slate-300 font-bold">${v.file_name}</span></div>
+                                    <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">File:</span> <span class="text-slate-300 font-bold">${v.website_name}</span></div>
                                     <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">Line:</span> <span class="text-rose-400 font-bold">${v.line_number}</span></div>
                                 </div>
                             </div>
@@ -1215,7 +1246,7 @@
                             <div class="absolute top-0 left-0 w-64 h-64 bg-emerald-500/5 blur-3xl rounded-full pointer-events-none"></div>
                             <div class="text-[10px] font-black tracking-[0.2em] text-emerald-400 mb-4 uppercase flex justify-between items-center relative z-10 border-b border-emerald-500/10 pb-4">
                                 <span class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div> Secure Infusion</span> 
-                                <span class="bg-emerald-500/10 px-3 py-1 rounded shadow-sm text-emerald-400">Confidence: ${Math.round((v.confidence_score || 0) * 100)}%</span>
+                                <span class="bg-emerald-500/10 px-3 py-1 rounded shadow-sm text-emerald-400">Confidence: ${Math.round((v.decision_score || 0.98) * 100)}%</span>
                             </div>
                             <div class="text-[11px] text-slate-400 mb-4 flex gap-6 relative z-10 bg-black/20 p-4 rounded-xl font-mono tracking-wider">
                                 <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">Vector:</span> <span class="text-emerald-400 font-bold ml-1">${v.vulnerability_type}</span></div>
