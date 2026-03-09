@@ -1,0 +1,91 @@
+╔══════════════════════════════════════════════════════════════════╗
+║           RENDER DEPLOYMENT CONFIGURATION                        ║
+╚══════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────┐
+│ SERVICE SETTINGS                                                 │
+├──────────────────────────────────────────────────────────────────┤
+│ Name:           devsecops-vulnerability-scanner                  │
+│ Environment:    Python 3                                         │
+│ Region:         Oregon (US West)                                 │
+│ Branch:         main                                             │
+│ Plan:           Free (or Starter $7/month)                       │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ BUILD CONFIGURATION                                              │
+├──────────────────────────────────────────────────────────────────┤
+│ Build Command:                                                   │
+│   pip install -r requirements.txt                                │
+│                                                                  │
+│ Start Command:                                                   │
+│   uvicorn server:app --host 0.0.0.0 --port $PORT                │
+│                                                                  │
+│ Health Check:                                                    │
+│   /version                                                       │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ ENVIRONMENT VARIABLES                                            │
+├──────────────────────────────────────────────────────────────────┤
+│ PYTHON_VERSION = 3.11.0                                          │
+│ PORT = 8000                                                      │
+│                                                                  │
+│ Optional:                                                        │
+│ DATABASE_URL = sqlite:///./vulnerabilities_enforced.db           │
+│ FASTAPI_ENV = production                                         │
+│ LOG_LEVEL = info                                                 │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ ALTERNATIVE START COMMANDS                                       │
+├──────────────────────────────────────────────────────────────────┤
+│ Option 1 (Default):                                              │
+│   uvicorn server:app --host 0.0.0.0 --port $PORT                │
+│                                                                  │
+│ Option 2 (With Workers):                                         │
+│   uvicorn server:app --host 0.0.0.0 --port $PORT --workers 2    │
+│                                                                  │
+│ Option 3 (Gunicorn):                                             │
+│   gunicorn server:app -w 2 -k uvicorn.workers.UvicornWorker \   │
+│     --bind 0.0.0.0:$PORT                                         │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ DEPLOYMENT STEPS                                                 │
+├──────────────────────────────────────────────────────────────────┤
+│ 1. Push code to GitHub                                           │
+│ 2. Go to https://dashboard.render.com/                           │
+│ 3. Click "New +" → "Web Service"                                 │
+│ 4. Connect your GitHub repository                                │
+│ 5. Enter the configuration above                                 │
+│ 6. Click "Create Web Service"                                    │
+│ 7. Wait for deployment (3-5 minutes)                             │
+│ 8. Access your app at: https://your-app.onrender.com            │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ VERIFICATION                                                     │
+├──────────────────────────────────────────────────────────────────┤
+│ Test endpoints:                                                  │
+│   curl https://your-app.onrender.com/version                    │
+│   curl https://your-app.onrender.com/available-websites         │
+│                                                                  │
+│ Access frontend:                                                 │
+│   https://your-app.onrender.com                                  │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ FILES INCLUDED                                                   │
+├──────────────────────────────────────────────────────────────────┤
+│ ✓ requirements.txt      - Python dependencies                    │
+│ ✓ render.yaml          - Auto-deployment config                 │
+│ ✓ server.py            - Main application                       │
+│ ✓ index.html           - Frontend UI                            │
+│ ✓ pipeline_manager.py  - Pipeline orchestrator                  │
+│ ✓ scan_engine/         - Vulnerability scanner                  │
+└──────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════╗
+║                    READY TO DEPLOY! 🚀                           ║
+╚══════════════════════════════════════════════════════════════════╝

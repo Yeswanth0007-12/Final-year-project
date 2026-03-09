@@ -18,16 +18,22 @@ import regex as re
 import threading
 import hashlib
 import time
+import queue  # Thread-safe queue module
 
 # --- GLOBAL LOGS & SESSIONS ---
 terminal_sessions = {}
 scan_queue = []
 active_scan = None
-patch_queue = []
-active_patch = None
-pipeline_paused = True # Default to paused until user confirms
-queuing_active = False # New flag to track background queuing process
-scan_sessions_data = {} # Step 1: Store session metadata for queue confirmation
+
+# Thread-safe patch queue implementation
+patch_queue = queue.Queue()  # Replace list with thread-safe Queue
+pipeline_paused_event = threading.Event()  # Replace boolean with Event
+pipeline_paused_event.set()  # Start paused (set means paused)
+queuing_active = False
+scan_sessions_data = {}
+
+# Lock for terminal_sessions to prevent race conditions
+terminal_sessions_lock = threading.Lock()
 
 def process_queue():
     global active_scan
@@ -68,29 +74,30 @@ def run_scan_job(job):
         process_queue()
 
 def append_log(session_id, msg, level="INFO", log_type="scanner"):
-    if session_id not in terminal_sessions:
-        terminal_sessions[session_id] = {
-            "scanner_logs": [], 
-            "automation_logs": [], 
-            "status": "RUNNING", 
-            "last_index_scanner": 0,
-            "last_index_automation": 0
+    with terminal_sessions_lock:  # Thread-safe access
+        if session_id not in terminal_sessions:
+            terminal_sessions[session_id] = {
+                "scanner_logs": [], 
+                "automation_logs": [], 
+                "status": "RUNNING", 
+                "last_index_scanner": 0,
+                "last_index_automation": 0
+            }
+        
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+        log_entry = {
+            "timestamp": timestamp,
+            "level": level,
+            "message": msg
         }
-    
-    timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-    log_entry = {
-        "timestamp": timestamp,
-        "level": level,
-        "message": msg
-    }
-    
-    if log_type == "automation":
-        terminal_sessions[session_id]["automation_logs"].append(log_entry)
-        # Also ensure it displays dynamically if 'pipeline' is passed explicitly
-        if session_id != "pipeline" and "pipeline" in terminal_sessions:
-             terminal_sessions["pipeline"]["automation_logs"].append(log_entry)
-    else:
-        terminal_sessions[session_id]["scanner_logs"].append(log_entry)
+        
+        if log_type == "automation":
+            terminal_sessions[session_id]["automation_logs"].append(log_entry)
+            # Also ensure it displays dynamically if 'pipeline' is passed explicitly
+            if session_id != "pipeline" and "pipeline" in terminal_sessions:
+                terminal_sessions["pipeline"]["automation_logs"].append(log_entry)
+        else:
+            terminal_sessions[session_id]["scanner_logs"].append(log_entry)
 
 # --- CONFIGURATION ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -134,6 +141,10 @@ class Vulnerability(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
+# State change tracking
+last_state_change_timestamp = time.time()
+state_change_lock = threading.Lock()
+
 def trigger_pipeline_update():
     """
     Core function called after every state change to ensure all modules
@@ -141,9 +152,10 @@ def trigger_pipeline_update():
     Since all modules read from the database, this acts as a gateway for cache-busting
     or global recalculations if needed in the future.
     """
+    global last_state_change_timestamp
+    with state_change_lock:
+        last_state_change_timestamp = time.time()
     print("[SYSTEM] Pipeline state change detected. Synchronizing modules...")
-    # Add any global state update logic here if necessary
-    pass
 
 class Feedback(Base):
     __tablename__ = "feedback"
@@ -278,7 +290,7 @@ def validate_patch_logic(v_type, patched_code):
 # --- PATCH QUEUE WORKER ---
 def add_to_patch_queue(vuln_id):
     job = {"vuln_id": vuln_id, "status": "QUEUED"}
-    patch_queue.append(job)
+    patch_queue.put(job)  # Thread-safe put operation
     
     # Update DB status
     db = SessionLocal()
@@ -289,35 +301,61 @@ def add_to_patch_queue(vuln_id):
     db.close()
     
     append_log("pipeline", f"[INFO] Vulnerability {vuln_id} added to patch queue.")
-    if not pipeline_paused:
+    if not pipeline_paused_event.is_set():  # If not paused (event is clear)
         process_patch_queue()
 
+# Single worker thread for processing patch queue
+patch_worker_thread = None
+patch_worker_running = False
+
 def process_patch_queue():
-    global active_patch
-    if active_patch is not None:
-        return
-    if pipeline_paused:
-        return
-    if len(patch_queue) == 0:
-        return
-        
-    job = patch_queue.pop(0)
-    job["status"] = "PROCESSING"
-    active_patch = job
+    global patch_worker_thread, patch_worker_running
     
-    thread = threading.Thread(target=run_patch_pipeline, args=(job,))
-    thread.start()
+    # Start worker thread if not already running
+    if not patch_worker_running:
+        patch_worker_running = True
+        patch_worker_thread = threading.Thread(target=patch_queue_worker, daemon=True)
+        patch_worker_thread.start()
+
+def patch_queue_worker():
+    """Single dedicated worker thread that processes queue items sequentially"""
+    global patch_worker_running
+    
+    while patch_worker_running:
+        try:
+            # Wait for pipeline to be unpaused
+            pipeline_paused_event.wait()  # Blocks until event is cleared (unpaused)
+            
+            # Check if paused again (event set means paused)
+            if pipeline_paused_event.is_set():
+                time.sleep(0.5)
+                continue
+            
+            # Get next job from queue (non-blocking with timeout)
+            try:
+                job = patch_queue.get(timeout=1.0)
+            except queue.Empty:
+                continue
+            
+            # Process the job
+            run_patch_pipeline(job)
+            patch_queue.task_done()
+            
+        except Exception as e:
+            append_log("pipeline", f"[ERROR] Worker thread error: {str(e)}", level="ERROR", log_type="automation")
+            time.sleep(1.0)
 
 def run_patch_pipeline(job):
-    """Refactored sequential patching with accurate lifecycle transitions."""
-    global active_patch
+    """Refactored sequential patching with accurate lifecycle transitions and per-vulnerability error handling."""
     vuln_id = job["vuln_id"]
     scan_id = job.get("scan_id", "pipeline")
     db = SessionLocal()
     
     try:
         vuln = db.query(Vulnerability).filter(Vulnerability.id == vuln_id).first()
-        if not vuln: return
+        if not vuln:
+            append_log(scan_id, f"[AUTOMATION_KERNEL] ERROR: Vulnerability {vuln_id} not found", level="ERROR", log_type="automation")
+            return
         
         # 1. QUEUED -> GENERATING (Delay: 5s)
         append_log(scan_id, f"[AUTOMATION_KERNEL] Initializing remediation: {vuln.website_name}", log_type="automation")
@@ -366,31 +404,34 @@ def run_patch_pipeline(job):
         # TOTAL DELAY: 5 + 7 + 8 + 5 = 25 seconds per execution
         
     except Exception as e:
-        append_log(scan_id, f"[AUTOMATION_KERNEL] ERROR Pipeline error for {vuln_id}: {str(e)}", level="ERROR", log_type="automation")
+        # Per-vulnerability error handling - mark as FAILED and continue
+        append_log(scan_id, f"[AUTOMATION_KERNEL] ERROR: Pipeline error for {vuln_id}: {str(e)}", level="ERROR", log_type="automation")
+        try:
+            vuln = db.query(Vulnerability).filter(Vulnerability.id == vuln_id).first()
+            if vuln:
+                vuln.status = "FAILED"
+                db.commit()
+                trigger_pipeline_update()
+        except:
+            pass
     finally:
         db.close()
-        active_patch = None
-        time.sleep(0.5)
-        
-        if len(patch_queue) > 0:
-            process_patch_queue()
 
 @app.post("/pipeline/start")
 def start_pipeline():
-    global pipeline_paused
-    pipeline_paused = False
+    pipeline_paused_event.clear()  # Clear event to unpause (allow processing)
     append_log("pipeline", "[ACTION] User confirmed execution. Resuming remediation queue...")
-    process_patch_queue()
-    return {"status": "started", "queue_size": len(patch_queue)}
+    process_patch_queue()  # Start worker if not running
+    return {"status": "started", "queue_size": patch_queue.qsize()}
 
 @app.get("/pipeline/status")
 def get_pipeline_status():
     return {
-        "active": active_patch,
-        "queue": [{"vuln_id": j["vuln_id"], "status": j["status"]} for j in patch_queue],
-        "paused": pipeline_paused,
+        "active": not patch_queue.empty(),
+        "queue": list(patch_queue.queue),  # Get queue snapshot
+        "paused": pipeline_paused_event.is_set(),
         "queuing_active": queuing_active,
-        "queue_count": len(patch_queue)
+        "queue_count": patch_queue.qsize()
     }
 
 # --- SCANNERS ---
@@ -814,17 +855,17 @@ def executive_scan(background_tasks: BackgroundTasks):
     Phase 1: Scan all predefined websites and log errors to Scanner terminal.
     Requires user confirmation to queue for patching.
     """
-    global pipeline_paused
-    pipeline_paused = True  # Pause pipeline until confirmed
+    pipeline_paused_event.set()  # Pause pipeline until confirmed
     
     session_id = "executive-" + str(uuid.uuid4())[:8]
-    terminal_sessions[session_id] = {
-        "scanner_logs": [], 
-        "automation_logs": [], 
-        "status": "RUNNING", 
-        "last_index_scanner": 0,
-        "last_index_automation": 0
-    }
+    with terminal_sessions_lock:
+        terminal_sessions[session_id] = {
+            "scanner_logs": [], 
+            "automation_logs": [], 
+            "status": "RUNNING", 
+            "last_index_scanner": 0,
+            "last_index_automation": 0
+        }
     background_tasks.add_task(run_executive_scan_task, session_id)
     
     return {"scan_id": session_id, "status": "RUNNING"}
@@ -832,7 +873,6 @@ def executive_scan(background_tasks: BackgroundTasks):
 @app.post("/confirm-automation/{scan_id}")
 def confirm_automation(scan_id: str):
     """Step 3: User confirms that detected vulnerabilities should enter the patch queue."""
-    global patch_queue, pipeline_paused
     
     if scan_id not in scan_sessions_data:
         raise HTTPException(status_code=404, detail="Scan session not found.")
@@ -842,26 +882,31 @@ def confirm_automation(scan_id: str):
     
     db = SessionLocal()
     try:
-        # Initialize queue
-        patch_queue.clear()
+        # Clear queue (thread-safe)
+        while not patch_queue.empty():
+            try:
+                patch_queue.get_nowait()
+            except queue.Empty:
+                break
         
         for v_id in vuln_ids:
             vuln = db.query(Vulnerability).filter(Vulnerability.id == v_id).first()
             if vuln:
                 vuln.status = "QUEUED_FOR_PATCH"
-                patch_queue.append({"vuln_id": vuln.id, "scan_id": scan_id, "status": "QUEUED"})
+                patch_queue.put({"vuln_id": vuln.id, "scan_id": scan_id, "status": "QUEUED"})
         
         db.commit()
         
-        append_log(scan_id, f"[AUTOMATION_KERNEL] Queue initialized with {len(patch_queue)} vulnerabilities.", log_type="automation")
-        append_log("pipeline", f"[AUTOMATION_KERNEL] Queue initialized with {len(patch_queue)} vulnerabilities.", log_type="automation")
+        queue_size = patch_queue.qsize()
+        append_log(scan_id, f"[AUTOMATION_KERNEL] Queue initialized with {queue_size} vulnerabilities.", log_type="automation")
+        append_log("pipeline", f"[AUTOMATION_KERNEL] Queue initialized with {queue_size} vulnerabilities.", log_type="automation")
         
-        pipeline_paused = False # Now we start the automation
-        process_patch_queue()
+        pipeline_paused_event.clear()  # Unpause pipeline
+        process_patch_queue()  # Start worker
         
         return {
             "status": "QUEUE_STARTED",
-            "queue_size": len(patch_queue)
+            "queue_size": queue_size
         }
     finally:
         db.close()
@@ -871,8 +916,8 @@ def queue_all_detected(background_tasks: BackgroundTasks):
     """
     Legacy endpoint maintenance.
     """
-    global pipeline_paused, queuing_active
-    pipeline_paused = True
+    global queuing_active
+    pipeline_paused_event.set()  # Pause pipeline
     queuing_active = True
     
     append_log("pipeline", "[SYSTEM] INITIALIZING REGISTRY INGESTION PROTOCOL...")
@@ -881,20 +926,26 @@ def queue_all_detected(background_tasks: BackgroundTasks):
     return {"status": "queuing_started", "message": "Background queuing initiated."}
 
 def run_queuing_task():
-    global patch_queue, queuing_active
+    global queuing_active
     db = SessionLocal()
     try:
         detected = db.query(Vulnerability).filter(
             Vulnerability.status.in_(["DETECTED", "FAILED"])
         ).all()
         
-        patch_queue.clear()
+        # Clear queue (thread-safe)
+        while not patch_queue.empty():
+            try:
+                patch_queue.get_nowait()
+            except queue.Empty:
+                break
+        
         found_count = len(detected)
         append_log("pipeline", f"[SYSTEM] {found_count} VULNERABILITIES IDENTIFIED IN REGISTRY.")
         
         for i, vuln in enumerate(detected):
             vuln.status = "QUEUED_FOR_PATCH"
-            patch_queue.append({"vuln_id": vuln.id, "status": "QUEUED"})
+            patch_queue.put({"vuln_id": vuln.id, "status": "QUEUED"})
             
             # Detailed sequential feedback
             append_log("pipeline", f"[INGEST] ({i+1}/{found_count}) Discovered: {vuln.vulnerability_type} in {vuln.website_name}")
@@ -905,7 +956,7 @@ def run_queuing_task():
         append_log("pipeline", "[SYSTEM] QUEUING_COMPLETE: All detected vulnerabilities are now in the remediation pipeline.", level="SUCCESS")
         
         # START THE WORKER
-        pipeline_paused = False
+        pipeline_paused_event.clear()  # Unpause
         process_patch_queue()
     finally:
         db.close()
@@ -1455,12 +1506,31 @@ def get_dashboard_metrics():
     risk_scores = db.query(Vulnerability.risk_score).all()
     avg_risk = sum(r[0] for r in risk_scores) / len(risk_scores) if risk_scores else 0
     
+    # Add state change timestamp for frontend polling optimization
+    with state_change_lock:
+        state_timestamp = last_state_change_timestamp
+    
     db.close()
     return {
         "total": total,
         "patched": patched,
         "validated": validated,
-        "risk_score": round(avg_risk, 1)
+        "risk_score": round(avg_risk, 1),
+        "last_update": state_timestamp  # Frontend can use this to optimize polling
+    }
+
+@app.get("/state-change-check")
+def check_state_change(last_known_timestamp: float = 0):
+    """
+    Endpoint for frontend to check if state has changed since last poll.
+    Returns True if state changed, False otherwise.
+    """
+    with state_change_lock:
+        current_timestamp = last_state_change_timestamp
+    
+    return {
+        "changed": current_timestamp > last_known_timestamp,
+        "timestamp": current_timestamp
     }
 
 @app.get("/system-core")

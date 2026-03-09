@@ -4,11 +4,11 @@ typer
 sqlmodel
 jinja2
 fastapi
-uvicorn
+uvicorn[standard]
 python-multipart
 regex
 requests
 beautifulsoup4
-sqlalchemy
+sqlalchemy<2.1
 gunicorn
-uvicorn
+httpx

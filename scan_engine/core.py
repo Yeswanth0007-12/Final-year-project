@@ -4,13 +4,15 @@ from datetime import datetime
 from scan_engine.models import ScanResult, ScanStatus, Vulnerability
 from scan_engine.scanners.bandit_scanner import BanditScanner
 from scan_engine.scanners.semgrep_scanner import SemgrepScanner
-from scan_engine.intel.db import create_db_and_tables, get_session
 from scan_engine.intel.enrichment import EnrichmentService
-from scan_engine.intel.models import VulnerabilityRecord, VulnerabilityHistory, ScanRecord
-from scan_engine.patching.models import PatchSuggestion
-from scan_engine.patching.feedback import FeedbackRecord
 from scan_engine.alerts import AlertService, AlertRecord
 from scan_engine.audit import AuditService, SystemAudit
+
+# Import unified database schema from server
+import sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from server import SessionLocal, Vulnerability as UnifiedVulnerability, ScanSession, trigger_pipeline_update
 
 class ScanEngine:
     def __init__(self):
@@ -22,84 +24,94 @@ class ScanEngine:
         import shutil
         if shutil.which("semgrep"):
             self.scanners.append(SemgrepScanner())
-        create_db_and_tables()
+        # No longer need separate database - using unified schema
         self.enricher = EnrichmentService()
         self.alert_service = AlertService()
         self.audit_service = AuditService()
 
-    def run_scan(self, target_path: str, scan_type: str = "manual") -> ScanRecord:
+    def run_scan(self, target_path: str, scan_type: str = "manual") -> ScanSession:
         scan_id = str(uuid.uuid4())
         
-        with get_session() as session:
-            # Create persistent scan record
-            scan_record = ScanRecord(
-                id=scan_id,
-                target=target_path,
-                status="RUNNING",
-                timestamp=datetime.utcnow()
+        db = SessionLocal()
+        try:
+            # Create scan session in unified database
+            scan_session = ScanSession(
+                total_files_scanned=0,
+                total_vulnerabilities=0,
+                overall_risk_score=0
             )
-            session.add(scan_record)
-            session.commit()
+            db.add(scan_session)
+            db.commit()
+            db.refresh(scan_session)
             
-            # Refresh to ensure we have the attached object
-            session.refresh(scan_record)
-        
-        self.audit_service.log_event("SCAN", f"Started diagnostic scan on target: {target_path}", resource_id=scan_id)
-        
-        all_vulnerabilities: List[Vulnerability] = []
-        
-        for scanner in self.scanners:
-            try:
-                findings = scanner.scan(target_path)
-                all_vulnerabilities.extend(findings)
-            except Exception as e:
-                print(f"Error executing {scanner.name}: {e}")
+            self.audit_service.log_event("SCAN", f"Started diagnostic scan on target: {target_path}", resource_id=str(scan_session.id))
+            
+            all_vulnerabilities: List[Vulnerability] = []
+            
+            for scanner in self.scanners:
+                try:
+                    findings = scanner.scan(target_path)
+                    all_vulnerabilities.extend(findings)
+                except Exception as e:
+                    print(f"Error executing {scanner.name}: {e}")
 
-        severity_map = {}
-        findings_saved = 0
-        
-        with get_session() as session:
+            severity_map = {}
+            findings_saved = 0
+            
             for vuln in all_vulnerabilities:
                 try:
-                    # Deduplication logic: (file_path, line_number, name)
-                    import hashlib
-                    dedup_key = hashlib.md5(f"{vuln.file_path}:{vuln.line_number}:{vuln.name}".encode()).hexdigest()
+                    # Unified deduplication logic: (website_name, line_number, vulnerability_type)
+                    # Use file_name as website_name for consistency
+                    website_name = os.path.basename(vuln.file_path)
                     
-                    # Check for existing record
-                    exists = session.get(VulnerabilityRecord, dedup_key)
-                    if exists:
+                    # Check for existing record using unified deduplication key
+                    existing = db.query(UnifiedVulnerability).filter(
+                        UnifiedVulnerability.website_name == website_name,
+                        UnifiedVulnerability.line_number == vuln.line_number,
+                        UnifiedVulnerability.vulnerability_type == vuln.name
+                    ).first()
+                    
+                    if existing:
                         continue
 
-                    # Enrich and convert to Record
-                    record = self.enricher.enrich_vulnerability(vuln)
-                    record.id = dedup_key # Override with dedup key
-                    record.scan_id = scan_id
+                    # Create unified vulnerability record
+                    unified_vuln = UnifiedVulnerability(
+                        id=f"SCAN-{uuid.uuid4().hex[:8]}",
+                        scan_session_id=scan_session.id,
+                        website_name=website_name,
+                        url=vuln.file_path,
+                        line_number=vuln.line_number,
+                        vulnerability_type=vuln.name,
+                        severity=vuln.severity.upper(),
+                        code_snippet=vuln.code[:500] if vuln.code else f"<{vuln.name}> detected",
+                        status="DETECTED",
+                        risk_score=10.0 if vuln.severity.upper() == "HIGH" else 5.0,
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
                     
                     # Severity tracking
-                    sev = record.severity.upper()
+                    sev = vuln.severity.upper()
                     severity_map[sev] = severity_map.get(sev, 0) + 1
                     
                     if sev in ["CRITICAL", "HIGH"]:
-                         self.alert_service.trigger_alert(sev, f"Detected {sev} vulnerability: {record.vulnerability_type} in {record.file_path}")
+                        self.alert_service.trigger_alert(sev, f"Detected {sev} vulnerability: {vuln.name} in {vuln.file_path}")
 
-                    session.add(record)
+                    db.add(unified_vuln)
                     findings_saved += 1
+                    scan_session.total_vulnerabilities += 1
+                    scan_session.overall_risk_score += unified_vuln.risk_score
+                    
                 except Exception as e:
                     print(f"Error saving vulnerability {vuln.id}: {e}")
             
             # Commit all findings
-            session.commit()
+            db.commit()
+            trigger_pipeline_update()
             
-            # Update scan record results
-            import json
-            scan_record = session.get(ScanRecord, scan_id)
-            if scan_record:
-                scan_record.status = "SUCCESS"
-                scan_record.findings_count = findings_saved
-                scan_record.severity_breakdown = json.dumps(severity_map)
-                session.add(scan_record)
-                session.commit()
-
-        self.audit_service.log_event("SCAN", f"Diagnostic scan sequence terminated. Findings: {findings_saved}", resource_id=scan_id)
-        
-        return scan_record
+            self.audit_service.log_event("SCAN", f"Diagnostic scan sequence terminated. Findings: {findings_saved}", resource_id=str(scan_session.id))
+            
+            return scan_session
+            
+        finally:
+            db.close()
