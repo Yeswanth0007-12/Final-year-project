@@ -1035,7 +1035,7 @@
                                 v.status === 'FAILED' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
                                     'bg-slate-800/40 text-slate-400 border border-white/10'
                         }">
-                                ${v.status.replace(/_/g, ' ')}
+                                ${(v.status || 'UNKNOWN').replace(/_/g, ' ')}
                             </span>
                         </td>
                         <td class="p-6 text-right">
@@ -1522,43 +1522,7 @@
                 }
             },
 
-            updateTreeDynamic(el) {
-                const vulns = pipelineState.vulnerabilities;
-                const detected = vulns.filter(v => v.status === 'DETECTED').length;
-                const patched = vulns.filter(v => v.status === 'PATCHED').length;
-                const validated = vulns.filter(v => v.status === 'VALIDATED').length;
-
-                const steps = [
-                    { id: 'tree-step-detected', count: detected },
-                    { id: 'tree-step-patched', count: patched },
-                    { id: 'tree-step-validated', count: validated }
-                ];
-
-                steps.forEach(s => {
-                    const node = document.getElementById(s.id);
-                    if (node) {
-                        const countEl = node.querySelector('.text-3xl');
-                        if (countEl) countEl.innerText = s.count;
-                        if (s.count > 0) {
-                            node.classList.add('animate-pulse', 'border-blue-500', 'bg-blue-500/10');
-                        }
-                    }
-                });
-            },
-
-            updateSystemDynamic(el) {
-                const s = pipelineState.systemCore;
-                const accuracyEl = document.getElementById('system-accuracy-val');
-                const riskEl = document.getElementById('system-risk-val');
-                if (accuracyEl) accuracyEl.innerText = `${s.engine_accuracy || 0}%`;
-                if (riskEl) riskEl.innerText = s.current_risk_score || 0;
-            },
-
-            updateComplianceDynamic(el) {
-                const c = pipelineState.complianceData;
-                const totalEl = document.getElementById('compliance-total-fixed');
-                if (totalEl) totalEl.innerText = c.total_fixed || 0;
-            },
+            // Removed duplicate update methods that were causing DOM reference failures
             renderFeedback(el) {
                 const f = pipelineState.feedbackData;
                 const comments = (f.comments || []).map(c => `

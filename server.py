@@ -374,14 +374,14 @@ def run_patch_pipeline(job):
         vuln.suggested_fix = remediation["suggested_fix"]
         vuln.patch_explanation = remediation["explanation"]
         
-        time.sleep(7.0)
+        time.sleep(5.0)
         vuln.status = "PATCH_APPLIED"
         db.commit()
         trigger_pipeline_update()
         append_log(scan_id, "[AUTOMATION_KERNEL] Patch applied", log_type="automation")
         
-        # 3. APPLIED -> VALIDATING (Delay: 8s)
-        time.sleep(8.0)
+        # 3. APPLIED -> VALIDATING (Delay: 5s)
+        time.sleep(5.0)
         vuln.status = "VALIDATING"
         db.commit()
         trigger_pipeline_update()
@@ -403,7 +403,7 @@ def run_patch_pipeline(job):
         
         db.commit()
         trigger_pipeline_update()
-        # TOTAL DELAY: 5 + 7 + 8 + 5 = 25 seconds per execution
+        # TOTAL DELAY: 5 + 5 + 5 + 5 = 20 seconds per execution
         
     except Exception as e:
         # Per-vulnerability error handling - mark as FAILED and continue
