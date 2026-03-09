@@ -266,32 +266,50 @@
 
             async fetchTerminal() {
                 try {
+                    // Make request tracking the last index fetched
+                    const scanIndex = this.scanLastIndex || 0;
+                    const pipeIndex = this.pipeLastIndex || 0;
+
                     const [scanRes, pipeRes] = await Promise.all([
-                        fetch(`${API_URL}/terminal-stream?session_id=${this.currentScanId}`),
-                        fetch(`${API_URL}/terminal-stream?session_id=pipeline`)
+                        fetch(`${API_URL}/terminal-stream?session_id=${this.currentScanId}&last_index=${scanIndex}`),
+                        fetch(`${API_URL}/terminal-stream?session_id=pipeline&last_index=${pipeIndex}`)
                     ]);
 
                     const scanData = await scanRes.json();
                     const pipeData = await pipeRes.json();
 
-                    this.terminalLogs = scanData.logs || [];
-                    this.pipelineLogs = pipeData.logs || [];
+                    // Only append new logs to the arrays and update indexes
+                    if (scanData.new_logs && scanData.new_logs.length > 0) {
+                        this.terminalLogs = (this.terminalLogs || []).concat(scanData.new_logs);
+                        this.scanLastIndex = scanData.last_index;
+                        this.scanHasNewLogs = true; // Signal for DOM update
+                    } else {
+                        this.scanHasNewLogs = false;
+                    }
+
+                    if (pipeData.new_logs && pipeData.new_logs.length > 0) {
+                        this.pipelineLogs = (this.pipelineLogs || []).concat(pipeData.new_logs);
+                        this.pipeLastIndex = pipeData.last_index;
+                        this.pipeHasNewLogs = true; // Signal for DOM update
+                    } else {
+                        this.pipeHasNewLogs = false;
+                    }
 
                     const oldStatus = this.scanStatus;
                     this.scanStatus = scanData.status || 'COMPLETED';
                     const foundCount = scanData.found_count;
 
-                    // Detect when ANY scan just finished → show Queue popup
+                    // Automatically start queue without popup per User Request Step 3
                     if (oldStatus === 'RUNNING' && this.scanStatus === 'COMPLETED' && !this.scanFinishedFlag) {
                         this.scanFinishedFlag = true;
-                        app.showToast('✅ Security Scan Complete', 'emerald');
-                        if (foundCount !== undefined && foundCount > 0) {
-                            // Deliberate 3s delay so user can read terminal findings before popup
-                            setTimeout(() => app.showQueueConfirmPopup(foundCount), 3000);
-                        }
+                        app.showToast('✅ Security Scan Complete. Auto-Queue Initiated.', 'emerald');
+                        // Backend now automatically handles queue ingestion, nothing for frontend to trigger here anymore!
                     }
 
-                    if (router.current === 'terminal') app.renderTerminalOnly();
+                    // Only trigger render update if there are new logs to minimize reflows
+                    if (router.current === 'terminal' && (this.scanHasNewLogs || this.pipeHasNewLogs)) {
+                        app.renderTerminalOnly();
+                    }
                 } catch (e) { console.error("Terminal Sync Error", e); }
             },
 
@@ -592,117 +610,7 @@
                 }
             },
 
-            showPipelinePopup() {
-                // For regular scans (non-executive): ask to start remediation directly
-                const count = pipelineState.vulnerabilities.filter(v => v.status === 'DETECTED').length;
-                if (count === 0) return;
-                if (document.getElementById('pipeline-modal')) return;
-                this.showStartRemediationPopup(count);
-            },
 
-            // POPUP 1: After executive scan - "We found X errors. Queue them?"
-            async showQueueConfirmPopup(foundCount) {
-                if (document.getElementById('pipeline-modal')) return;
-
-                const overlay = document.createElement('div');
-                overlay.id = 'pipeline-modal';
-                overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl px-6';
-                overlay.innerHTML = `
-                    <div class="glass max-w-lg w-full p-10 rounded-[40px] border border-rose-500/30 shadow-[0_0_80px_rgba(225,29,72,0.2)] text-center animate-in zoom-in duration-500">
-                        <div class="w-24 h-24 bg-rose-600/20 text-rose-400 rounded-full flex items-center justify-center mx-auto mb-8 border border-rose-500/30">
-                            <i data-lucide="shield-x" class="w-12 h-12"></i>
-                        </div>
-                        <h3 class="text-3xl font-black text-white mb-4 tracking-tighter uppercase">Scan Complete</h3>
-                        <p class="text-slate-300 mb-10 font-bold leading-relaxed text-base">
-                            We found <span class="text-rose-400 text-2xl font-black px-2">${foundCount} error${foundCount !== 1 ? 's' : ''}</span>
-                            in the system registry.<br/>
-                            <span class="text-slate-500 text-sm mt-2 block">Now I'm going to queue them one-by-one for remediation.<br/>Shall I start queuing?</span>
-                        </p>
-                        <div class="flex gap-4">
-                            <button onclick="document.getElementById('pipeline-modal').remove()"
-                                class="flex-1 px-8 py-5 rounded-2xl border border-white/10 text-slate-500 font-black uppercase tracking-widest text-[10px] hover:bg-white/5 transition-all active:scale-95">
-                                Skip
-                            </button>
-                            <button id="btn-queue-all"
-                                onclick="app.queueAllAndAskToStart()"
-                                class="flex-1 px-8 py-5 rounded-2xl bg-rose-600 text-white font-black uppercase tracking-widest text-[10px] hover:bg-rose-500 shadow-[0_10px_30px_rgba(225,29,72,0.4)] transition-all active:scale-95">
-                                Yes, Queue Them
-                            </button>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(overlay);
-                lucide.createIcons();
-            },
-
-            // Called when user accepts queue popup
-            async queueAllAndAskToStart() {
-                const btn = document.getElementById('btn-queue-all');
-                if (btn) { btn.innerText = 'Initializing Ingestion...'; btn.disabled = true; }
-
-                // Switch terminal to automation tab to show queuing logs
-                this.switchTerminalMode('pipeline');
-                router.go('terminal'); // Force navigate to see the logs
-
-                try {
-                    const res = await fetch(`${API_URL}/pipeline/queue-all`, { method: 'POST' });
-                    if (!res.ok) throw new Error('Ingestion failed');
-
-                    // Close queue popup
-                    const modal = document.getElementById('pipeline-modal');
-                    if (modal) modal.remove();
-
-                    // Monitor terminal for completion
-                    let checkInterval = setInterval(() => {
-                        const lastLog = pipelineState.pipelineLogs[pipelineState.pipelineLogs.length - 1];
-                        if (lastLog && lastLog.message.includes('QUEUING_COMPLETE')) {
-                            clearInterval(checkInterval);
-                            // Show start popup with the final count
-                            const queuedCount = pipelineState.vulnerabilities.filter(v => v.status === 'QUEUED_FOR_PATCH').length;
-                            this.showStartRemediationPopup(queuedCount);
-                        }
-                    }, 500);
-                } catch (e) {
-                    console.error("Queue All Failed", e);
-                    const modal = document.getElementById('pipeline-modal');
-                    if (modal) modal.remove();
-                    alert('Failed to initialize queuing: ' + e.message);
-                }
-            },
-
-            // POPUP 2: After queuing - "X queued. Start automated remediation?"
-            showStartRemediationPopup(count) {
-                if (document.getElementById('pipeline-modal')) return;
-
-                const overlay = document.createElement('div');
-                overlay.id = 'pipeline-modal';
-                overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl px-6';
-                overlay.innerHTML = `
-                    <div class="glass max-w-lg w-full p-10 rounded-[40px] border border-blue-500/40 shadow-[0_0_80px_rgba(59,130,246,0.3)] text-center animate-in zoom-in duration-500">
-                        <div class="w-24 h-24 bg-blue-600/20 text-blue-400 rounded-full flex items-center justify-center mx-auto mb-8 animate-pulse border border-blue-500/30">
-                            <i data-lucide="cpu" class="w-12 h-12"></i>
-                        </div>
-                        <h3 class="text-3xl font-black text-white mb-4 tracking-tighter uppercase">Queue Ready</h3>
-                        <p class="text-slate-300 mb-10 font-bold leading-relaxed text-base">
-                            <span class="text-blue-400 text-2xl font-black px-2">${count} vulnerabilit${count !== 1 ? 'ies' : 'y'}</span>
-                            ${count !== 1 ? 'are' : 'is'} queued and ready.<br/>
-                            <span class="text-slate-500 text-sm mt-2 block">Shall I start the auto-remediation kernel?<br/>Each vulnerability will be processed one-by-one (~25s each).</span>
-                        </p>
-                        <div class="flex gap-4">
-                            <button onclick="document.getElementById('pipeline-modal').remove()"
-                                class="flex-1 px-8 py-5 rounded-2xl border border-white/10 text-slate-500 font-black uppercase tracking-widest text-[10px] hover:bg-white/5 transition-all active:scale-95">
-                                Monitor Only
-                            </button>
-                            <button onclick="pipelineState.startPipeline(); document.getElementById('pipeline-modal').remove()"
-                                class="flex-1 px-8 py-5 rounded-2xl bg-blue-600 text-white font-black uppercase tracking-widest text-[10px] hover:bg-blue-500 shadow-[0_10px_30px_rgba(37,99,235,0.4)] transition-all active:scale-95">
-                                Accept &amp; Execute
-                            </button>
-                        </div>
-                    </div>
-                `;
-                document.body.appendChild(overlay);
-                lucide.createIcons();
-            },
 
 
             renderGlobalOverlays() {
@@ -949,7 +857,19 @@
                     ? pipelineState.terminalLogs
                     : (pipelineState.pipelineLogs || []);
 
-                const logsHTML = logsSource.map(log => {
+                // Get only logs we haven't rendered yet
+                const currentRenderedCount = body.getAttribute('data-log-count') ? parseInt(body.getAttribute('data-log-count')) : 0;
+
+                // If scanning restarted / swapped, we clear entirely
+                if (currentRenderedCount > logsSource.length) {
+                    body.innerHTML = '';
+                    body.setAttribute('data-log-count', '0');
+                }
+
+                const renderCount = parseInt(body.getAttribute('data-log-count') || '0');
+                const unrenderedLogs = logsSource.slice(renderCount);
+
+                const logsHTML = unrenderedLogs.map(log => {
                     const level = log.level || 'INFO';
                     const msg = (log.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     const time = log.timestamp || '';
@@ -964,18 +884,20 @@
                     </div>`;
                 }).join('');
 
-                const placeholder = this.terminalMode === 'scan'
-                    ? '<div class="text-slate-700 animate-pulse font-bold tracking-widest">_ Awaiting scanner directives...</div>'
-                    : '<div class="text-slate-700 animate-pulse font-bold tracking-widest">_ Awaiting automation kernel start...</div>';
+                if (logsHTML) {
+                    // Remove placeholder if present
+                    if (body.querySelector('.animate-pulse')) {
+                        body.innerHTML = '';
+                    }
 
-                const newContent = logsHTML || placeholder;
-
-                // Only update if content has actually changed
-                if (body.getAttribute('data-log-hash') !== String(logsSource.length)) {
-                    body.setAttribute('data-log-hash', String(logsSource.length));
-                    body.innerHTML = newContent;
-                    // Auto-scroll to bottom on new content
-                    body.scrollTop = body.scrollHeight;
+                    body.insertAdjacentHTML('beforeend', logsHTML);
+                    body.setAttribute('data-log-count', logsSource.length.toString());
+                    body.scrollTop = body.scrollHeight; // Auto-scroll
+                } else if (logsSource.length === 0) {
+                    const placeholder = this.terminalMode === 'scan'
+                        ? '<div class="text-slate-700 animate-pulse font-bold tracking-widest">_ Awaiting scanner directives...</div>'
+                        : '<div class="text-slate-700 animate-pulse font-bold tracking-widest">_ Awaiting automation kernel start...</div>';
+                    body.innerHTML = placeholder;
                 }
 
                 // Detect all-done state in pipeline mode and show toast once

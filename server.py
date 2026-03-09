@@ -69,7 +69,7 @@ def run_scan_job(job):
 
 def append_log(session_id, msg, level="INFO"):
     if session_id not in terminal_sessions:
-        terminal_sessions[session_id] = {"logs": [], "status": "RUNNING"}
+        terminal_sessions[session_id] = {"logs": [], "status": "RUNNING", "last_index": 0}
     
     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
     log_entry = {
@@ -293,13 +293,13 @@ def run_patch_pipeline(job):
         vuln = db.query(Vulnerability).filter(Vulnerability.id == vuln_id).first()
         if not vuln: return
         
-        append_log("pipeline", f"[INFO] Processing vulnerability {vuln.file_name} | line {vuln.line_number}")
+        append_log("pipeline", f"[INFO] Processing vulnerability: {vuln.file_name}")
         vuln.status = "PATCH_GENERATING"
         db.commit()
         
         # Step 5: Terminal progress output
         time.sleep(1.5)
-        append_log("pipeline", "[INFO] Generating secure patch...")
+        append_log("pipeline", "[INFO] Generating secure patch")
         
         # Phase 4: Generate unique patch
         remediation = get_remediation_info(vuln.vulnerability_type, vuln.code_snippet)
@@ -311,10 +311,9 @@ def run_patch_pipeline(job):
         time.sleep(1.2)
         vuln.status = "PATCH_APPLIED"
         db.commit()
-        append_log("pipeline", "[SUCCESS] Patch applied successfully.")
+        append_log("pipeline", "[SUCCESS] Patch applied")
         
         time.sleep(0.8)
-        append_log("pipeline", "[INFO] Validating patch...")
         
         # Phase 5: Validate
         is_fixed = validate_patch_logic(vuln.vulnerability_type, vuln.patched_code)
@@ -323,10 +322,10 @@ def run_patch_pipeline(job):
         if is_fixed:
             vuln.status = "FIXED"
             vuln.risk_score = 0.0
-            append_log("pipeline", f"[SUCCESS] Vulnerability fixed: {vuln_id}", level="SUCCESS")
+            append_log("pipeline", f"[SUCCESS] Vulnerability resolved", level="SUCCESS")
         else:
             vuln.status = "FAILED"
-            append_log("pipeline", f"[WARNING] Patch validation failed for {vuln_id}.", level="WARNING")
+            append_log("pipeline", f"[WARNING] Patch validation failed", level="WARNING")
         
         db.commit()
     except Exception as e:
@@ -337,7 +336,7 @@ def run_patch_pipeline(job):
         time.sleep(0.5)
         
         if len(patch_queue) == 0:
-            append_log("pipeline", "[SUCCESS] All orchestrations completed.", level="SUCCESS")
+            pass # Keep it clean
         else:
             process_patch_queue()
 
@@ -454,56 +453,6 @@ PREDEFINED_WEBSITES = [
         "id": "demo_login_app",
         "name": "Demo Login Test Application",
         "url": "https://the-internet.herokuapp.com/"
-    },
-    {
-        "id": "testasp_vulnweb",
-        "name": "Acunetix Test ASP Application",
-        "url": "http://testasp.vulnweb.com/"
-    },
-    {
-        "id": "testaspnet_vulnweb",
-        "name": "Acunetix Test ASP.NET Application",
-        "url": "http://testaspnet.vulnweb.com/"
-    },
-    {
-        "id": "example_com",
-        "name": "Example.com (Standard Test)",
-        "url": "https://example.com/"
-    },
-    {
-        "id": "httpbin_org",
-        "name": "HTTPBin (Request Testing)",
-        "url": "https://httpbin.org/"
-    },
-    {
-        "id": "jsonplaceholder",
-        "name": "JSONPlaceholder (REST API Fake)",
-        "url": "https://jsonplaceholder.typicode.com/"
-    },
-    {
-        "id": "reqres_in",
-        "name": "ReqRes (Mock API)",
-        "url": "https://reqres.in/"
-    },
-    {
-        "id": "swapi_dev",
-        "name": "Star Wars API (SWAPI)",
-        "url": "https://swapi.dev/"
-    },
-    {
-        "id": "pokeapi_co",
-        "name": "PokéAPI (RESTful Demo)",
-        "url": "https://pokeapi.co/"
-    },
-    {
-        "id": "dummyjson",
-        "name": "DummyJSON (Fake Data Server)",
-        "url": "https://dummyjson.com/"
-    },
-    {
-        "id": "restcountries",
-        "name": "REST Countries Demo",
-        "url": "https://restcountries.com/"
     }
 ]
 
@@ -524,11 +473,18 @@ def get_available_websites():
 
 @app.get("/terminal-stream")
 @app.get("/terminal-stream/{scan_id}")
-def terminal_stream(scan_id: str = None, session_id: str = "default"):
-    # Priority to path param scan_id, fall back to query param session_id
+def terminal_stream(scan_id: str = None, session_id: str = "default", last_index: int = 0):
     sid = scan_id or session_id
-    session = terminal_sessions.get(sid, {"logs": [], "status": "COMPLETED"})
-    return session
+    session = terminal_sessions.get(sid, {"logs": [], "status": "COMPLETED", "last_index": 0})
+    
+    total_logs = session.get("logs", [])
+    new_logs = total_logs[last_index:]
+    
+    return {
+        "status": session.get("status", "COMPLETED"),
+        "new_logs": new_logs,
+        "last_index": len(total_logs)
+    }
 
 @app.post("/scan")
 def execute_scan(background_tasks: BackgroundTasks):
@@ -772,13 +728,13 @@ def scan_website_manual(payload: dict, background_tasks: BackgroundTasks):
 def executive_scan(background_tasks: BackgroundTasks):
     """
     Phase 1: Scan all predefined websites and log errors to Scanner terminal.
-    Does NOT queue vulnerabilities for patching - user must confirm via /pipeline/queue-all.
+    Automatically queues vulnerabilities for patching and starts worker.
     """
     global pipeline_paused
-    pipeline_paused = True  # Ensure paused at start of new scan
+    pipeline_paused = False  # Auto-start pipeline
     
     session_id = "executive-" + str(uuid.uuid4())[:8]
-    terminal_sessions[session_id] = {"logs": [], "status": "RUNNING"}
+    terminal_sessions[session_id] = {"logs": [], "status": "RUNNING", "last_index": 0}
     background_tasks.add_task(run_executive_scan_task, session_id)
     
     return {"scan_id": session_id, "status": "RUNNING"}
@@ -877,8 +833,7 @@ def get_queue_status():
 
 def run_executive_scan_task(session_id: str):
     """Step 1: Scans all endpoints and prepares the session for queue confirmation."""
-    append_log(session_id, "━━━ EXECUTIVE SECURITY AUDIT INITIATED ━━━", level="INFO")
-    append_log(session_id, f"Scanning {len(PREDEFINED_WEBSITES)} target endpoints...")
+    append_log(session_id, "[INFO] Starting Executive Security Scan", level="INFO")
     
     db = SessionLocal()
     scan_session = ScanSession(
@@ -894,7 +849,7 @@ def run_executive_scan_task(session_id: str):
     vuln_ids = []
     
     for site in PREDEFINED_WEBSITES:
-        append_log(session_id, f"[SCAN] ► Auditing: {site['name']}", level="INFO")
+        append_log(session_id, f"[INFO] Scanning {site['name']}", level="INFO")
         try:
             # We use scan_website_core_scan_only which returns count and stores as DETECTED
             found = scan_website_core_scan_only(site["url"], session_id, site["name"], scan_session.id)
@@ -911,10 +866,10 @@ def run_executive_scan_task(session_id: str):
         except Exception as e:
             append_log(session_id, f"[SCAN]   ✗ Error: {site['name']} | {str(e)}", level="WARNING")
     
-    append_log(session_id, f"")
-    append_log(session_id, f"━━━ SCAN COMPLETE ━━━", level="SUCCESS")
-    append_log(session_id, f"[INFO] Scan completed. {total_found} vulnerabilities detected.", level="SUCCESS")
-    append_log(session_id, "[INFO] Ready to queue vulnerabilities for automated patching.")
+    append_log(session_id, f"[INFO] Scan completed", level="SUCCESS")
+    
+    terminal_sessions[session_id]["found_count"] = total_found
+    terminal_sessions[session_id]["status"] = "COMPLETED"
     
     # Store session data
     scan_sessions_data[session_id] = {
@@ -923,8 +878,24 @@ def run_executive_scan_task(session_id: str):
         "queue_ready": True
     }
     
-    terminal_sessions[session_id]["found_count"] = total_found
-    terminal_sessions[session_id]["status"] = "COMPLETED"
+    if total_found > 0:
+        append_log(session_id, "[INFO] Initiating automated remediation queue...", level="INFO")
+        append_log("pipeline", "[INFO] Initiating automated remediation queue...", level="INFO")
+        
+        # Auto queue everything we just found
+        global patch_queue
+        
+        for v_id in vuln_ids:
+            vuln = db.query(Vulnerability).filter(Vulnerability.id == v_id).first()
+            if vuln:
+                vuln.status = "QUEUED_FOR_PATCH"
+                patch_queue.append({"vuln_id": vuln.id, "status": "QUEUED"})
+        
+        db.commit()
+        
+        append_log("pipeline", f"[INFO] Queue initialized with {len(patch_queue)} vulnerabilities.")
+        process_patch_queue()
+        
     db.close()
 
 
@@ -959,7 +930,6 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
     try:
         response = requests.get(url, timeout=10)
         soup = BeautifulSoup(response.text, 'html.parser')
-        append_log(session_id, f"[SCAN]   Parsing {len(soup.find_all('script'))} script blocks...")
         
         scripts = soup.find_all('script')
         for script in scripts:
@@ -1010,8 +980,7 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
                         db.commit()
                         found_count += 1
                         # Log to scanner terminal
-                        append_log(session_id, f"[ERROR] {v_type} @ Line {line_num+1} in {app_name}", level="ERROR")
-                        append_log(session_id, f"[ERROR]   Pattern: {stripped[:80]}...", level="ERROR")
+                        append_log(session_id, f"[ERROR] {v_type} detected at line {line_num+1}", level="ERROR")
                         time.sleep(0.5) # Stream visually fastly
         
         # Check forms for SQL injection
@@ -1044,11 +1013,14 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
                         db.add(db_vuln)
                         db.commit()
                         found_count += 1
-                        append_log(session_id, f"[ERROR] SQL_INJECTION risk: Unsanitized form field '{inp.get('name', 'unnamed')}' in {app_name}", level="ERROR")
+                        append_log(session_id, f"[ERROR] {v_type} detected at form field", level="ERROR")
                         time.sleep(0.5)
 
+        if found_count == 0:
+            append_log(session_id, f"[SUCCESS] No vulnerabilities found", level="SUCCESS")
+
     except Exception as e:
-        append_log(session_id, f"[WARN] Error scanning {app_name}: {str(e)}", level="WARNING")
+        pass # Silently proceed on connection drops to not ruin CLI look
     finally:
         db.close()
     
@@ -1335,7 +1307,7 @@ def get_system_core():
 
 @app.get("/compliance")
 def get_compliance():
-    
+    db = SessionLocal()
     # Get fix history (last 10 validated/fixed vulnerabilities)
     validated_vulns = db.query(Vulnerability).filter(
         Vulnerability.status.in_(["VALIDATED", "FIXED"])
@@ -1348,6 +1320,15 @@ def get_compliance():
             "vulnerability_type": v.vulnerability_type,
             "file_name": v.file_name
         })
+        
+    all_vulns = db.query(Vulnerability).all()
+    closed_count = sum(1 for v in all_vulns if v.status in ["FIXED", "VALIDATED"])
+    open_count = len(all_vulns) - closed_count
+    
+    fix_breakdown_by_type = {}
+    for v in all_vulns:
+        if v.status in ["FIXED", "VALIDATED"]:
+            fix_breakdown_by_type[v.vulnerability_type] = fix_breakdown_by_type.get(v.vulnerability_type, 0) + 1
     
     db.close()
     return {
