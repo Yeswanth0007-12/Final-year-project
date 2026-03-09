@@ -1076,7 +1076,7 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
         {"type": "EXEC_INJECTION", "snippet": "os.system(userInput)", "risk": 9.5}
     ]
     
-    num_to_inject = random.randint(2, 3) 
+    num_to_inject = 2  # Exactly 2 vulnerabilities per website (20 total for 10 sites)
     
     try:
         for i in range(num_to_inject):
@@ -1202,9 +1202,7 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
         # Log the actual error instead of silently ignoring it
         append_log(session_id, f"[SCANNER_ENGINE] WARNING: Scan error for {app_name}: {str(e)}", level="WARNING", log_type="scanner")
     finally:
-        if found_count == 0:
-            append_log(session_id, f"[SCANNER_ENGINE] No additional vulnerabilities found in live scan", level="INFO", log_type="scanner")
-        else:
+        if found_count > 0:
             append_log(session_id, f"[SCANNER_ENGINE] Found {found_count} vulnerabilities in {app_name}", level="SUCCESS", log_type="scanner")
         db.close()
     
