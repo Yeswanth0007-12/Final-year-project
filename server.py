@@ -67,9 +67,15 @@ def run_scan_job(job):
         active_scan = None
         process_queue()
 
-def append_log(session_id, msg, level="INFO"):
+def append_log(session_id, msg, level="INFO", log_type="scanner"):
     if session_id not in terminal_sessions:
-        terminal_sessions[session_id] = {"logs": [], "status": "RUNNING", "last_index": 0}
+        terminal_sessions[session_id] = {
+            "scanner_logs": [], 
+            "automation_logs": [], 
+            "status": "RUNNING", 
+            "last_index_scanner": 0,
+            "last_index_automation": 0
+        }
     
     timestamp = datetime.datetime.now().strftime("%H:%M:%S")
     log_entry = {
@@ -77,7 +83,14 @@ def append_log(session_id, msg, level="INFO"):
         "level": level,
         "message": msg
     }
-    terminal_sessions[session_id]["logs"].append(log_entry)
+    
+    if log_type == "automation":
+        terminal_sessions[session_id]["automation_logs"].append(log_entry)
+        # Also ensure it displays dynamically if 'pipeline' is passed explicitly
+        if session_id != "pipeline" and "pipeline" in terminal_sessions:
+             terminal_sessions["pipeline"]["automation_logs"].append(log_entry)
+    else:
+        terminal_sessions[session_id]["scanner_logs"].append(log_entry)
 
 # --- CONFIGURATION ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -287,19 +300,20 @@ def run_patch_pipeline(job):
     """Step 3 & 5: Sequential and transparent patching with detailed logs."""
     global active_patch
     vuln_id = job["vuln_id"]
+    scan_id = job.get("scan_id", "pipeline")
     db = SessionLocal()
     
     try:
         vuln = db.query(Vulnerability).filter(Vulnerability.id == vuln_id).first()
         if not vuln: return
         
-        append_log("pipeline", f"[INFO] Processing vulnerability: {vuln.file_name}")
+        append_log(scan_id, f"[AUTOMATION_KERNEL] Processing vulnerability: {vuln.file_name}", log_type="automation")
         vuln.status = "PATCH_GENERATING"
         db.commit()
         
         # Step 5: Terminal progress output
         time.sleep(1.5)
-        append_log("pipeline", "[INFO] Generating secure patch")
+        append_log(scan_id, "[AUTOMATION_KERNEL] Generating remediation patch.", log_type="automation")
         
         # Phase 4: Generate unique patch
         remediation = get_remediation_info(vuln.vulnerability_type, vuln.code_snippet)
@@ -311,7 +325,7 @@ def run_patch_pipeline(job):
         time.sleep(1.2)
         vuln.status = "PATCH_APPLIED"
         db.commit()
-        append_log("pipeline", "[SUCCESS] Patch applied")
+        append_log(scan_id, "[AUTOMATION_KERNEL] Patch applied", log_type="automation")
         
         time.sleep(0.8)
         
@@ -322,14 +336,14 @@ def run_patch_pipeline(job):
         if is_fixed:
             vuln.status = "FIXED"
             vuln.risk_score = 0.0
-            append_log("pipeline", f"[SUCCESS] Vulnerability resolved", level="SUCCESS")
+            append_log(scan_id, f"[AUTOMATION_KERNEL] SUCCESS Vulnerability resolved", level="SUCCESS", log_type="automation")
         else:
             vuln.status = "FAILED"
-            append_log("pipeline", f"[WARNING] Patch validation failed", level="WARNING")
+            append_log(scan_id, f"[AUTOMATION_KERNEL] WARNING Patch validation failed", level="WARNING", log_type="automation")
         
         db.commit()
     except Exception as e:
-        append_log("pipeline", f"[ERROR] Pipeline error for {vuln_id}: {str(e)}", level="ERROR")
+        append_log(scan_id, f"[AUTOMATION_KERNEL] ERROR Pipeline error for {vuln_id}: {str(e)}", level="ERROR", log_type="automation")
     finally:
         db.close()
         active_patch = None
@@ -473,17 +487,29 @@ def get_available_websites():
 
 @app.get("/terminal-stream")
 @app.get("/terminal-stream/{scan_id}")
-def terminal_stream(scan_id: str = None, session_id: str = "default", last_index: int = 0):
+def terminal_stream(scan_id: str = None, session_id: str = "default", last_scanner_index: int = 0, last_automation_index: int = 0):
     sid = scan_id or session_id
-    session = terminal_sessions.get(sid, {"logs": [], "status": "COMPLETED", "last_index": 0})
+    session = terminal_sessions.get(sid, {
+        "scanner_logs": [], 
+        "automation_logs": [], 
+        "status": "COMPLETED", 
+        "last_index_scanner": 0,
+        "last_index_automation": 0
+    })
     
-    total_logs = session.get("logs", [])
-    new_logs = total_logs[last_index:]
+    total_scanner = session.get("scanner_logs", [])
+    new_scanner = total_scanner[last_scanner_index:]
+    
+    total_automation = session.get("automation_logs", [])
+    new_automation = total_automation[last_automation_index:]
     
     return {
         "status": session.get("status", "COMPLETED"),
-        "new_logs": new_logs,
-        "last_index": len(total_logs)
+        "new_scanner_logs": new_scanner,
+        "new_automation_logs": new_automation,
+        "last_scanner_index": len(total_scanner),
+        "last_automation_index": len(total_automation),
+        "found_count": session.get("found_count", 0)
     }
 
 @app.post("/scan")
@@ -728,20 +754,26 @@ def scan_website_manual(payload: dict, background_tasks: BackgroundTasks):
 def executive_scan(background_tasks: BackgroundTasks):
     """
     Phase 1: Scan all predefined websites and log errors to Scanner terminal.
-    Automatically queues vulnerabilities for patching and starts worker.
+    Requires user confirmation to queue for patching.
     """
     global pipeline_paused
-    pipeline_paused = False  # Auto-start pipeline
+    pipeline_paused = True  # Pause pipeline until confirmed
     
     session_id = "executive-" + str(uuid.uuid4())[:8]
-    terminal_sessions[session_id] = {"logs": [], "status": "RUNNING", "last_index": 0}
+    terminal_sessions[session_id] = {
+        "scanner_logs": [], 
+        "automation_logs": [], 
+        "status": "RUNNING", 
+        "last_index_scanner": 0,
+        "last_index_automation": 0
+    }
     background_tasks.add_task(run_executive_scan_task, session_id)
     
     return {"scan_id": session_id, "status": "RUNNING"}
 
-@app.post("/queue-confirm/{scan_id}")
-def queue_confirm(scan_id: str):
-    """Step 2: User confirms that detected vulnerabilities should enter the patch queue."""
+@app.post("/confirm-automation/{scan_id}")
+def confirm_automation(scan_id: str):
+    """Step 3: User confirms that detected vulnerabilities should enter the patch queue."""
     global patch_queue, pipeline_paused
     
     if scan_id not in scan_sessions_data:
@@ -759,19 +791,13 @@ def queue_confirm(scan_id: str):
             vuln = db.query(Vulnerability).filter(Vulnerability.id == v_id).first()
             if vuln:
                 vuln.status = "QUEUED_FOR_PATCH"
-                patch_queue.append({"vuln_id": vuln.id, "status": "QUEUED"})
+                patch_queue.append({"vuln_id": vuln.id, "scan_id": scan_id, "status": "QUEUED"})
         
         db.commit()
         
-        append_log("pipeline", "[INFO] User approved patch queue.")
-        append_log("pipeline", f"[INFO] Queue initialized with {len(patch_queue)} vulnerabilities.")
+        append_log(scan_id, f"[AUTOMATION_KERNEL] Queue initialized with {len(patch_queue)} vulnerabilities.", log_type="automation")
+        append_log("pipeline", f"[AUTOMATION_KERNEL] Queue initialized with {len(patch_queue)} vulnerabilities.", log_type="automation")
         
-        # Resuming remediation queue automatically if needed or keep paused
-        # The user said "Do NOT automatically start patch queue yet" in Step 1, 
-        # but in Step 2 it says "When called: Retrieve... return...". 
-        # Step 3 says "Start worker thread" if not running.
-        # I'll start the worker but keep pipeline_paused = False if it's meant to be automated.
-        # "Purpose: User confirms that detected vulnerabilities should enter the automated patch queue."
         pipeline_paused = False # Now we start the automation
         process_patch_queue()
         
@@ -833,7 +859,7 @@ def get_queue_status():
 
 def run_executive_scan_task(session_id: str):
     """Step 1: Scans all endpoints and prepares the session for queue confirmation."""
-    append_log(session_id, "[INFO] Starting Executive Security Scan", level="INFO")
+    append_log(session_id, "[SCANNER_ENGINE] Starting Executive Scan", level="INFO", log_type="scanner")
     
     db = SessionLocal()
     scan_session = ScanSession(
@@ -849,7 +875,7 @@ def run_executive_scan_task(session_id: str):
     vuln_ids = []
     
     for site in PREDEFINED_WEBSITES:
-        append_log(session_id, f"[INFO] Scanning {site['name']}", level="INFO")
+        append_log(session_id, f"[SCANNER_ENGINE] Fetching {site['name']}", level="INFO", log_type="scanner")
         try:
             # We use scan_website_core_scan_only which returns count and stores as DETECTED
             found = scan_website_core_scan_only(site["url"], session_id, site["name"], scan_session.id)
@@ -864,9 +890,9 @@ def run_executive_scan_task(session_id: str):
             vuln_ids.extend([v.id for v in site_vulns])
             
         except Exception as e:
-            append_log(session_id, f"[SCAN]   ✗ Error: {site['name']} | {str(e)}", level="WARNING")
+            append_log(session_id, f"[SCANNER_ENGINE] ERROR: {site['name']} | {str(e)}", level="WARNING", log_type="scanner")
     
-    append_log(session_id, f"[INFO] Scan completed", level="SUCCESS")
+    append_log(session_id, f"[SCANNER_ENGINE] Scan completed", level="SUCCESS", log_type="scanner")
     
     terminal_sessions[session_id]["found_count"] = total_found
     terminal_sessions[session_id]["status"] = "COMPLETED"
@@ -877,24 +903,6 @@ def run_executive_scan_task(session_id: str):
         "vulnerabilities": vuln_ids,
         "queue_ready": True
     }
-    
-    if total_found > 0:
-        append_log(session_id, "[INFO] Initiating automated remediation queue...", level="INFO")
-        append_log("pipeline", "[INFO] Initiating automated remediation queue...", level="INFO")
-        
-        # Auto queue everything we just found
-        global patch_queue
-        
-        for v_id in vuln_ids:
-            vuln = db.query(Vulnerability).filter(Vulnerability.id == v_id).first()
-            if vuln:
-                vuln.status = "QUEUED_FOR_PATCH"
-                patch_queue.append({"vuln_id": vuln.id, "status": "QUEUED"})
-        
-        db.commit()
-        
-        append_log("pipeline", f"[INFO] Queue initialized with {len(patch_queue)} vulnerabilities.")
-        process_patch_queue()
         
     db.close()
 
@@ -980,7 +988,7 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
                         db.commit()
                         found_count += 1
                         # Log to scanner terminal
-                        append_log(session_id, f"[ERROR] {v_type} detected at line {line_num+1}", level="ERROR")
+                        append_log(session_id, f"[SCANNER_ENGINE] ERROR {v_type} detected at line {line_num+1}", level="ERROR", log_type="scanner")
                         time.sleep(0.5) # Stream visually fastly
         
         # Check forms for SQL injection
@@ -1013,11 +1021,11 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
                         db.add(db_vuln)
                         db.commit()
                         found_count += 1
-                        append_log(session_id, f"[ERROR] {v_type} detected at form field", level="ERROR")
+                        append_log(session_id, f"[SCANNER_ENGINE] ERROR {v_type} detected at form field", level="ERROR", log_type="scanner")
                         time.sleep(0.5)
 
         if found_count == 0:
-            append_log(session_id, f"[SUCCESS] No vulnerabilities found", level="SUCCESS")
+            append_log(session_id, f"[SCANNER_ENGINE] SUCCESS No vulnerabilities found", level="SUCCESS", log_type="scanner")
 
     except Exception as e:
         pass # Silently proceed on connection drops to not ruin CLI look

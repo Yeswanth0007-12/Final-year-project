@@ -266,44 +266,41 @@
 
             async fetchTerminal() {
                 try {
-                    // Make request tracking the last index fetched
                     const scanIndex = this.scanLastIndex || 0;
-                    const pipeIndex = this.pipeLastIndex || 0;
+                    const autoIndex = this.pipeLastIndex || 0;
 
-                    const [scanRes, pipeRes] = await Promise.all([
-                        fetch(`${API_URL}/terminal-stream?session_id=${this.currentScanId}&last_index=${scanIndex}`),
-                        fetch(`${API_URL}/terminal-stream?session_id=pipeline&last_index=${pipeIndex}`)
-                    ]);
+                    const res = await fetch(`${API_URL}/terminal-stream?session_id=${this.currentScanId}&last_scanner_index=${scanIndex}&last_automation_index=${autoIndex}`);
+                    const data = await res.json();
 
-                    const scanData = await scanRes.json();
-                    const pipeData = await pipeRes.json();
-
-                    // Only append new logs to the arrays and update indexes
-                    if (scanData.new_logs && scanData.new_logs.length > 0) {
-                        this.terminalLogs = (this.terminalLogs || []).concat(scanData.new_logs);
-                        this.scanLastIndex = scanData.last_index;
+                    // Append logs
+                    if (data.new_scanner_logs && data.new_scanner_logs.length > 0) {
+                        this.terminalLogs = (this.terminalLogs || []).concat(data.new_scanner_logs);
+                        this.scanLastIndex = data.last_scanner_index;
                         this.scanHasNewLogs = true; // Signal for DOM update
                     } else {
                         this.scanHasNewLogs = false;
                     }
 
-                    if (pipeData.new_logs && pipeData.new_logs.length > 0) {
-                        this.pipelineLogs = (this.pipelineLogs || []).concat(pipeData.new_logs);
-                        this.pipeLastIndex = pipeData.last_index;
+                    if (data.new_automation_logs && data.new_automation_logs.length > 0) {
+                        this.pipelineLogs = (this.pipelineLogs || []).concat(data.new_automation_logs);
+                        this.pipeLastIndex = data.last_automation_index;
                         this.pipeHasNewLogs = true; // Signal for DOM update
                     } else {
                         this.pipeHasNewLogs = false;
                     }
 
                     const oldStatus = this.scanStatus;
-                    this.scanStatus = scanData.status || 'COMPLETED';
-                    const foundCount = scanData.found_count;
+                    this.scanStatus = data.status || 'COMPLETED';
 
-                    // Automatically start queue without popup per User Request Step 3
+                    // Trigger User Confirmation Popup on scan completion per Step 3
                     if (oldStatus === 'RUNNING' && this.scanStatus === 'COMPLETED' && !this.scanFinishedFlag) {
                         this.scanFinishedFlag = true;
-                        app.showToast('✅ Security Scan Complete. Auto-Queue Initiated.', 'emerald');
-                        // Backend now automatically handles queue ingestion, nothing for frontend to trigger here anymore!
+                        app.showToast('✅ Security Scan Complete. Awaiting User Confirmation.', 'emerald');
+                        if (data.found_count > 0) {
+                            app.showQueueConfirmPopup(this.currentScanId, data.found_count);
+                        } else {
+                            app.showToast('Zero Vulnerabilities Found.', 'emerald');
+                        }
                     }
 
                     // Only trigger render update if there are new logs to minimize reflows
@@ -607,6 +604,50 @@
                 const viewport = document.getElementById('viewport');
                 if (router.current === 'terminal') {
                     this.updateTerminalLogs();
+                }
+            },
+
+            showQueueConfirmPopup(scanId, count) {
+                const overlay = document.createElement('div');
+                overlay.id = 'queue-confirm-overlay';
+                overlay.className = 'fixed inset-0 z-[100] flex items-center justify-center p-8 bg-black/80 backdrop-blur-md animate-in fade-in duration-300';
+
+                overlay.innerHTML = `
+                    <div class="glass w-full max-w-lg rounded-[40px] border border-blue-500/30 overflow-hidden shadow-[0_0_100px_rgba(59,130,246,0.2)]">
+                        <div class="p-8 border-b border-white/10 bg-gradient-to-r from-blue-900/10 to-transparent flex items-center justify-between">
+                            <h2 class="text-2xl font-black text-white italic tracking-tighter uppercase flex items-center gap-3">
+                                <i data-lucide="shield-alert" class="w-6 h-6 text-emerald-400"></i> Scan Complete
+                            </h2>
+                            <span class="text-[9px] font-black tracking-widest uppercase text-slate-500">ID: ${scanId.substring(0, 8)}</span>
+                        </div>
+                        <div class="p-8 pb-4 text-center">
+                            <div class="mb-6 font-mono font-black text-7xl text-rose-500 drop-shadow-[0_0_15px_rgba(244,63,94,0.4)]">${count}</div>
+                            <h3 class="text-lg font-black text-white tracking-widest uppercase mb-4">Threats Identified</h3>
+                            <p class="text-slate-400 text-sm mb-8 leading-relaxed">The Neural Kernel has intercepted ${count} structural flaws. Initiate the autonomous remediation flow to dynamically synthesize constraints.</p>
+                            
+                            <div class="flex gap-4 mb-4">
+                                <button onclick="document.getElementById('queue-confirm-overlay').remove()" class="flex-1 py-4 rounded-2xl glass text-slate-400 font-black uppercase text-[10px] tracking-[0.2em] hover:text-white transition-all">Dismiss Menu</button>
+                                <button onclick="app.confirmAutomationExecution('${scanId}'); document.getElementById('queue-confirm-overlay').remove()" class="flex-1 py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black uppercase text-[10px] tracking-[0.3em] shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2">
+                                    <i data-lucide="zap" class="w-4 h-4"></i> START AUTOMATION
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+                lucide.createIcons();
+            },
+
+            async confirmAutomationExecution(scanId) {
+                try {
+                    await fetch(`${API_URL}/confirm-automation/${scanId}`, { method: 'POST' });
+                    app.showToast('✅ Automation Protocol Activated!', 'emerald');
+                    // Automatically switch to automation tab
+                    app.switchTerminalMode('pipeline');
+                    pipelineState.fetchAll();
+                } catch (e) {
+                    console.error("Queue confirm failed", e);
+                    app.showToast('Error initiating automation', 'rose');
                 }
             },
 
