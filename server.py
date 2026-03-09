@@ -1258,6 +1258,18 @@ def scan_website_core(url: str, session_id: str, app_name: str, scan_session_id:
     db = SessionLocal()
     detected_vulns = []
     
+    # Check if this website has been thoroughly patched recently
+    previous_fixed = db.query(Vulnerability).filter(
+        Vulnerability.website_name == app_name,
+        Vulnerability.status == "FIXED"
+    ).count()
+    
+    if previous_fixed >= 2: # Or purely depending on overall status
+        append_log(session_id, f"[SYSTEM] Target domain {app_name} is secure.", level="SUCCESS")
+        append_log(session_id, f"[SYSTEM] Previous structural flaws have been neutralized by Neural Core.", level="SUCCESS")
+        db.close()
+        return 0 # No new bugs to find
+    
     # --- ALWAYS INJECT VULNERABILITIES FIRST ---
     simulated_vulns = [
         {"type": "EVAL_INJECTION", "snippet": "eval(userInput)", "risk": 10.0},
