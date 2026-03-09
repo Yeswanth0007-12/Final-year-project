@@ -897,12 +897,16 @@ def run_queuing_task():
             patch_queue.append({"vuln_id": vuln.id, "status": "QUEUED"})
             
             # Detailed sequential feedback
-            append_log("pipeline", f"[INGEST] ({i+1}/{found_count}) Discovered: {vuln.vulnerability_type} in {vuln.file_name}")
+            append_log("pipeline", f"[INGEST] ({i+1}/{found_count}) Discovered: {vuln.vulnerability_type} in {vuln.website_name}")
             append_log("pipeline", f"[INGEST]   ↳ Mapping to Neural Core...")
             db.commit() # Commit each one so frontend sees status change
             time.sleep(1.8) # Loading format cadence
             
         append_log("pipeline", "[SYSTEM] QUEUING_COMPLETE: All detected vulnerabilities are now in the remediation pipeline.", level="SUCCESS")
+        
+        # START THE WORKER
+        pipeline_paused = False
+        process_patch_queue()
     finally:
         db.close()
         queuing_active = False
@@ -1438,29 +1442,25 @@ def validate_patch(id: str):
 def get_dashboard_metrics():
     """Step 7: Dynamic metrics for Dashboard."""
     db = SessionLocal()
-    session = db.query(ScanSession).order_by(ScanSession.created_at.desc()).first()
     
-    if not session:
-        db.close()
-        return {"total": 0, "patched": 0, "validated": 0, "risk_score": 0}
-        
-    vulns = db.query(Vulnerability).filter(Vulnerability.scan_session_id == session.id).all()
-    total = len(vulns)
-    patched = sum(1 for v in vulns if v.status in ["PATCH_APPLIED", "FIXED"])
-    validated = sum(1 for v in vulns if v.status == "FIXED")
+    # Calculate global metrics for the dashboard
+    total = db.query(Vulnerability).count()
+    # "Patched" in the UI label means "Pending/In Progress" or "Needs Review"
+    # We'll make it disjoint: PATCH_APPLIED and VALIDATING go here.
+    # FIXED goes to "Validated"
+    patched = db.query(Vulnerability).filter(Vulnerability.status.in_(["PATCH_APPLIED", "VALIDATING"])).count()
+    validated = db.query(Vulnerability).filter(Vulnerability.status == "FIXED").count()
     
-    # Recalculate risk score: Each FIXED vuln reduces total risk
-    initial_risk = sum(v.risk_score for v in (db.query(Vulnerability).filter(Vulnerability.scan_session_id == session.id).all()))
-    current_risk = sum(v.risk_score for v in vulns if v.status != "FIXED") if vulns else 0
+    # Risk score calculation (avg)
+    risk_scores = db.query(Vulnerability.risk_score).all()
+    avg_risk = sum(r[0] for r in risk_scores) / len(risk_scores) if risk_scores else 0
     
     db.close()
     return {
         "total": total,
         "patched": patched,
         "validated": validated,
-        "risk_score": round(current_risk, 1),
-        "initial_risk": round(initial_risk, 1),
-        "scan_time": session.created_at
+        "risk_score": round(avg_risk, 1)
     }
 
 @app.get("/system-core")
