@@ -1,0 +1,140 @@
+╔══════════════════════════════════════════════════════════════════╗
+║                  RENDER DEPLOYMENT - COPY & PASTE                ║
+╚══════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────┐
+│ BUILD COMMAND (Copy This)                                        │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   pip install -r requirements.txt                                │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ START COMMAND (Copy This)                                        │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   uvicorn server:app --host 0.0.0.0 --port $PORT                │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ ENVIRONMENT VARIABLES (Add These)                                │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   Key: PYTHON_VERSION                                            │
+│   Value: 3.11.0                                                  │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ HEALTH CHECK PATH (Copy This)                                   │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   /version                                                       │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ DEPLOYMENT STEPS                                                 │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│ 1. Go to: https://dashboard.render.com/                         │
+│                                                                  │
+│ 2. Click: "New +" → "Web Service"                               │
+│                                                                  │
+│ 3. Connect your GitHub repository                               │
+│                                                                  │
+│ 4. Configure:                                                    │
+│    - Name: devsecops-vulnerability-scanner                      │
+│    - Region: Oregon (US West)                                   │
+│    - Branch: main                                               │
+│    - Environment: Python 3                                      │
+│                                                                  │
+│ 5. Paste Build Command (from above)                             │
+│                                                                  │
+│ 6. Paste Start Command (from above)                             │
+│                                                                  │
+│ 7. Click "Advanced" → Add Environment Variable                  │
+│    - PYTHON_VERSION = 3.11.0                                    │
+│                                                                  │
+│ 8. Set Health Check Path: /version                              │
+│                                                                  │
+│ 9. Select Plan: Free (or Starter $7/month)                      │
+│                                                                  │
+│ 10. Click "Create Web Service"                                  │
+│                                                                  │
+│ 11. Wait 3-5 minutes                                             │
+│                                                                  │
+│ 12. Done! Your app is live.                                     │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ AFTER DEPLOYMENT                                                 │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│ Your app URL:                                                    │
+│   https://your-app-name.onrender.com                            │
+│                                                                  │
+│ Test it:                                                         │
+│   curl https://your-app-name.onrender.com/version               │
+│                                                                  │
+│ Access frontend:                                                 │
+│   Open in browser: https://your-app-name.onrender.com           │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ ALTERNATIVE START COMMANDS (If Needed)                          │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│ With Workers (Better Performance):                              │
+│   uvicorn server:app --host 0.0.0.0 --port $PORT --workers 2   │
+│                                                                  │
+│ With Gunicorn (Production):                                     │
+│   gunicorn server:app -w 2 -k uvicorn.workers.UvicornWorker \  │
+│     --bind 0.0.0.0:$PORT                                        │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ LOCAL TESTING (Before Deploy)                                   │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│ Install dependencies:                                            │
+│   pip install -r requirements.txt                               │
+│                                                                  │
+│ Start server:                                                    │
+│   uvicorn server:app --reload --host 0.0.0.0 --port 8000       │
+│                                                                  │
+│ Test:                                                            │
+│   curl http://localhost:8000/version                            │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────┐
+│ TROUBLESHOOTING                                                  │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│ Build fails?                                                     │
+│   → Check requirements.txt exists                               │
+│   → Verify Python version is 3.11.0                             │
+│                                                                  │
+│ App crashes?                                                     │
+│   → Check Render logs                                            │
+│   → Verify start command uses $PORT                             │
+│   → Check environment variables                                  │
+│                                                                  │
+│ Slow cold starts?                                                │
+│   → Expected on free tier (spins down after 15 min)            │
+│   → Upgrade to Starter plan for always-on                       │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+
+╔══════════════════════════════════════════════════════════════════╗
+║                    READY TO DEPLOY! 🚀                           ║
+║                                                                  ║
+║  All commands tested and verified.                              ║
+║  No errors. Just copy, paste, and deploy.                       ║
+╚══════════════════════════════════════════════════════════════════╝

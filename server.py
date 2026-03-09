@@ -323,11 +323,9 @@ def patch_queue_worker():
     
     while patch_worker_running:
         try:
-            # Wait for pipeline to be unpaused
-            pipeline_paused_event.wait()  # Blocks until event is cleared (unpaused)
-            
-            # Check if paused again (event set means paused)
+            # Check if pipeline is paused
             if pipeline_paused_event.is_set():
+                # Pipeline is paused, wait for it to be unpaused
                 time.sleep(0.5)
                 continue
             
@@ -335,6 +333,7 @@ def patch_queue_worker():
             try:
                 job = patch_queue.get(timeout=1.0)
             except queue.Empty:
+                # No jobs in queue, continue loop
                 continue
             
             # Process the job
