@@ -231,24 +231,28 @@
             async fetchAll() {
                 try {
                     const [vulns, dash, comp, core, sites, pipe] = await Promise.all([
-                        fetch(`${API_URL}/vulnerabilities`).then(r => r.json()),
-                        fetch(`${API_URL}/dashboard`).then(r => r.json()),
-                        fetch(`${API_URL}/compliance`).then(r => r.json()),
-                        fetch(`${API_URL}/system-core`).then(r => r.json()),
-                        fetch(`${API_URL}/available-websites`).then(r => r.json()),
-                        fetch(`${API_URL}/pipeline/status`).then(r => r.json())
+                        fetch(`${API_URL}/vulnerabilities`).then(r => r.ok ? r.json() : this.vulnerabilities),
+                        fetch(`${API_URL}/dashboard`).then(r => r.ok ? r.json() : this.metrics),
+                        fetch(`${API_URL}/compliance`).then(r => r.ok ? r.json() : this.complianceData),
+                        fetch(`${API_URL}/system-core`).then(r => r.ok ? r.json() : this.systemCore),
+                        fetch(`${API_URL}/available-websites`).then(r => r.ok ? r.json() : { websites: this.availableWebsites }),
+                        fetch(`${API_URL}/pipeline/status`).then(r => r.ok ? r.json() : { paused: this.paused, active: this.activeJob, queuing_active: this.queuingActive, queue: this.queue })
                     ]);
-                    this.vulnerabilities = vulns;
-                    this.metrics = dash;
-                    this.complianceData = comp;
-                    this.systemCore = core;
-                    this.availableWebsites = sites.websites || [];
-                    this.paused = pipe.paused;
-                    this.activeJob = pipe.active;
-                    this.queuingActive = pipe.queuing_active;
-                    this.queue = Array.isArray(pipe.queue) ? pipe.queue : [];
+
+                    this.vulnerabilities = Array.isArray(vulns) ? vulns : (this.vulnerabilities || []);
+                    this.metrics = dash || this.metrics;
+                    this.complianceData = comp || this.complianceData;
+                    this.systemCore = core || this.systemCore;
+                    this.availableWebsites = sites.websites || this.availableWebsites || [];
+
+                    if (pipe) {
+                        this.paused = pipe.paused;
+                        this.activeJob = pipe.active;
+                        this.queuingActive = pipe.queuing_active;
+                        this.queue = Array.isArray(pipe.queue) ? pipe.queue : (this.queue || []);
+                    }
                     const oldQueueCount = this.queueCount || 0;
-                    this.queueCount = pipe.queue ? pipe.queue.length : 0;
+                    this.queueCount = this.queue.length;
 
                     // Trigger Success Pop-up when queue clears
                     if (oldQueueCount > 0 && this.queueCount === 0 && !pipelineState.paused) {
@@ -276,6 +280,7 @@
                     const autoIndex = this.pipeLastIndex || 0;
 
                     const res = await fetch(`${API_URL}/terminal-stream?session_id=${this.currentScanId}&last_scanner_index=${scanIndex}&last_automation_index=${autoIndex}`);
+                    if (!res.ok) return; // Prevent parsing errors on DB lock (500)
                     const data = await res.json();
 
                     // Append logs
@@ -1158,7 +1163,7 @@
                             v.status === 'FAILED' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
                                 'bg-slate-800/40 text-slate-400 border border-white/10'
                     }">
-                            ${v.status.replace(/_/g, ' ')}
+                            ${(v.status || 'UNKNOWN').replace(/_/g, ' ')}
                         </span>
                     </td>
                     <td class="p-6 text-right">
@@ -1303,7 +1308,7 @@
             },
 
             renderTree(el) {
-                const vulns = pipelineState.vulnerabilities.filter(v => v.status === 'FIXED' || v.status === 'VALIDATED');
+                const vulns = pipelineState.vulnerabilities.filter(v => ['PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING', 'FIXED', 'VALIDATED'].includes(v.status));
 
                 if (vulns.length === 0) {
                     el.innerHTML = `
@@ -1334,7 +1339,7 @@
                                 </div>
                                 <div class="text-right">
                                     <div class="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mb-1">Neural Confidence</div>
-                                    <div class="text-xl font-black text-emerald-400">${v.risk_score ? (v.risk_score * 10).toFixed(0) : '99'}%</div>
+                                    <div class="text-xl font-black text-emerald-400">${Math.round((v.decision_score || 0.98) * 100)}%</div>
                                 </div>
                             </div>
                             
@@ -1343,9 +1348,14 @@
                                 <code>${(v.code_snippet || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>
                             </div>
                             
-                            <div class="flex items-center gap-4 bg-emerald-900/10 p-4 rounded-xl border border-emerald-500/10 text-emerald-400/90 text-sm">
-                                <i data-lucide="check-circle" class="w-5 h-5 shrink-0"></i>
-                                <span>${v.patch_explanation || 'AST manipulation patch successfully generated and structurally validated.'}</span>
+                            <div class="flex items-center gap-4 p-4 rounded-xl border text-sm ${v.status === 'FIXED' ? 'bg-emerald-900/10 border-emerald-500/10 text-emerald-400/90' : v.status === 'FAILED' ? 'bg-rose-900/10 border-rose-500/10 text-rose-400/90' : 'bg-blue-900/10 border-blue-500/10 text-blue-400/90'}">
+                                <i data-lucide="${v.status === 'FIXED' ? 'check-circle' : v.status === 'FAILED' ? 'x-circle' : 'refresh-cw'}" class="w-5 h-5 shrink-0 ${['PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(v.status) ? 'animate-spin' : ''}"></i>
+                                <span>${v.status === 'PATCH_GENERATING' ? 'Analyzing AST for logic mutation...' :
+                        v.status === 'PATCH_APPLIED' ? 'Synthesizing verified patch injection...' :
+                            v.status === 'VALIDATING' ? 'Running recursive validation context against injected patch...' :
+                                v.status === 'FAILED' ? 'Automated neural mediation failed. Manual review required.' :
+                                    (v.patch_explanation || 'AST manipulation patch successfully generated and structurally validated.')
+                    }</span>
                             </div>
                         </div>
                     </div>
