@@ -298,14 +298,18 @@
                     const oldStatus = this.scanStatus;
                     this.scanStatus = data.status || 'COMPLETED';
 
-                    // Trigger User Confirmation Popup on scan completion per Step 3
+                    // Trigger Auto-Queuing on scan completion
                     if (oldStatus === 'RUNNING' && this.scanStatus === 'COMPLETED' && !this.scanFinishedFlag) {
                         this.scanFinishedFlag = true;
-                        app.showToast('✅ Security Scan Complete. Awaiting User Confirmation.', 'emerald');
+
                         if (data.found_count > 0) {
-                            app.showQueueConfirmPopup(this.currentScanId, data.found_count);
+                            app.showToast(`✅ Scan Complete. Auto-queuing ${data.found_count} threats for remediation...`, 'emerald');
+                            // Automatically start the automation queue
+                            setTimeout(() => {
+                                app.confirmAutomationExecution(this.currentScanId);
+                            }, 1500); // Small visual delay
                         } else {
-                            app.showToast('Zero Vulnerabilities Found.', 'emerald');
+                            app.showToast('Zero Vulnerabilities Found. System Secure.', 'emerald');
                         }
                     }
 
@@ -1101,6 +1105,32 @@
 
             smartUpdate() {
                 this.render(true);
+            },
+
+            updateTreeDynamic(el) {
+                const stateHash = pipelineState.vulnerabilities.map(v => v.id + v.status).join('|');
+                if (el.getAttribute('data-render-hash') !== stateHash) {
+                    this.renderTree(el);
+                    el.setAttribute('data-render-hash', stateHash);
+                }
+            },
+
+            updateSystemDynamic(el) {
+                const s = pipelineState.systemCore || {};
+                const stateHash = `${s.engine_accuracy}|${s.current_risk_score}|${s.validated_count}|${s.patched_count}|${s.total_scans}|${s.total_vulnerabilities}`;
+                if (el.getAttribute('data-render-hash') !== stateHash) {
+                    this.renderSystem(el);
+                    el.setAttribute('data-render-hash', stateHash);
+                }
+            },
+
+            updateComplianceDynamic(el) {
+                const c = pipelineState.complianceData || {};
+                const stateHash = `${c.total_fixed}|${Object.keys(c.fix_breakdown_by_type || {}).join(',')}|${c.history ? c.history.length : 0}`;
+                if (el.getAttribute('data-render-hash') !== stateHash) {
+                    this.renderCompliance(el);
+                    el.setAttribute('data-render-hash', stateHash);
+                }
             },
 
             renderVulns(el) {
