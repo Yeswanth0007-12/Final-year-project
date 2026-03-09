@@ -1,0 +1,14 @@
+bandit
+pydantic
+typer
+sqlmodel
+jinja2
+fastapi
+uvicorn
+python-multipart
+regex
+requests
+beautifulsoup4
+sqlalchemy
+gunicorn
+uvicorn

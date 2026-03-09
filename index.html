@@ -1,0 +1,1636 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecLAB Centralized Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Outfit:wght@300;400;600;800;900&display=swap');
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: radial-gradient(circle at 50% -20%, #1e1b4b 0%, #020617 100%);
+            color: #f8fafc;
+            margin: 0;
+            overflow: hidden;
+        }
+
+        .font-mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .glass {
+            background: linear-gradient(145deg, rgba(15, 23, 42, 0.6) 0%, rgba(2, 6, 23, 0.9) 100%);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+            transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
+        }
+
+        .glass:hover {
+            border-color: rgba(59, 130, 246, 0.4);
+            box-shadow: 0 35px 60px -12px rgba(59, 130, 246, 0.2);
+            transform: translateY(-5px);
+        }
+
+        .nav-item {
+            position: relative;
+            overflow: hidden;
+            background: transparent;
+            font-weight: 500;
+            letter-spacing: 0.025em;
+        }
+
+        .nav-item::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: #3b82f6;
+            transform: scaleY(0);
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            transform-origin: center;
+            border-radius: 0 4px 4px 0;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.8);
+        }
+
+        .nav-item:hover {
+            background: rgba(59, 130, 246, 0.05);
+            color: white;
+            padding-left: 1.25rem;
+        }
+
+        .nav-item.active {
+            background: linear-gradient(90deg, rgba(59, 130, 246, 0.15) 0%, transparent 100%);
+            color: #60a5fa;
+            font-weight: 800;
+        }
+
+        .nav-item.active::before {
+            transform: scaleY(0.7);
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.1);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(51, 65, 85, 0.6);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(59, 130, 246, 0.8);
+        }
+
+        /* Vibrant Text gradients */
+        .text-gradient {
+            background: linear-gradient(135deg, #60a5fa 0%, #a855f7 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .pulse-subtle {
+            animation: pulse-border 3s infinite ease-in-out;
+        }
+
+        @keyframes pulse-border {
+            0% {
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.2);
+            }
+
+            50% {
+                box-shadow: 0 0 0 8px rgba(59, 130, 246, 0);
+            }
+
+            100% {
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+            }
+        }
+    </style>
+</head>
+
+<body class="h-screen flex text-sm">
+
+    <!-- SIDEBAR -->
+    <nav
+        class="w-68 bg-black/40 backdrop-blur-xl border-r border-slate-800/50 flex flex-col p-6 z-10 shadow-2xl shadow-indigo-500/10">
+        <div class="mb-12 px-2 flex items-center gap-4">
+            <div
+                class="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700 flex items-center justify-center shadow-[0_8px_25px_rgba(59,130,246,0.4)] pulse-subtle relative overflow-hidden group">
+                <div class="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                <i data-lucide="shield-check" class="w-6 h-6 text-white relative z-10"></i>
+            </div>
+            <div>
+                <span class="font-black text-2xl text-white tracking-tighter block leading-none mb-1">SecLAB<span
+                        class="text-blue-500">.</span></span>
+                <span
+                    class="text-[10px] font-black text-slate-500 uppercase tracking-[0.4em] block opacity-80">Autonomous
+                    Core</span>
+            </div>
+        </div>
+
+        <div class="space-y-1.5 flex-1">
+            <button onclick="router.go('dashboard')" id="btn-dashboard"
+                class="nav-item w-full text-left px-4 py-3.5 rounded-xl text-slate-400 transition-all duration-300 flex items-center gap-3">
+                <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Dashboard
+            </button>
+            <button onclick="router.go('vulnerabilities')" id="btn-vulnerabilities"
+                class="nav-item w-full text-left px-4 py-3.5 rounded-xl text-slate-400 transition-all duration-300 flex items-center gap-3">
+                <i data-lucide="shield-alert" class="w-4 h-4"></i> Vulnerabilities
+            </button>
+            <button onclick="router.go('patch-lab')" id="btn-patch-lab"
+                class="nav-item w-full text-left px-4 py-3.5 rounded-xl text-slate-400 transition-all duration-300 flex items-center gap-3">
+                <i data-lucide="wrench" class="w-4 h-4"></i> Patch Lab
+            </button>
+            <button onclick="router.go('decision-tree')" id="btn-decision-tree"
+                class="nav-item w-full text-left px-4 py-3.5 rounded-xl text-slate-400 transition-all duration-300 flex items-center gap-3">
+                <i data-lucide="git-branch" class="w-4 h-4"></i> Decision Tree
+            </button>
+            <button onclick="router.go('system-core')" id="btn-system-core"
+                class="nav-item w-full text-left px-4 py-3.5 rounded-xl text-slate-400 transition-all duration-300 flex items-center gap-3">
+                <i data-lucide="cpu" class="w-4 h-4"></i> System Core
+            </button>
+            <button onclick="router.go('compliance')" id="btn-compliance"
+                class="nav-item w-full text-left px-4 py-3.5 rounded-xl text-slate-400 transition-all duration-300 flex items-center gap-3">
+                <i data-lucide="clipboard-check" class="w-4 h-4"></i> Compliance
+            </button>
+            <button onclick="router.go('feedback')" id="btn-feedback"
+                class="nav-item w-full text-left px-4 py-3.5 rounded-xl text-slate-400 transition-all duration-300 flex items-center gap-3">
+                <i data-lucide="message-square" class="w-4 h-4"></i> Feedback
+            </button>
+            <div class="my-4 h-px bg-slate-800/30"></div>
+            <button onclick="router.go('terminal')" id="btn-terminal"
+                class="nav-item w-full text-left px-4 py-3.5 rounded-xl text-slate-400 transition-all duration-300 flex items-center gap-3">
+                <i data-lucide="terminal" class="w-4 h-4"></i> Terminal
+            </button>
+            <button onclick="router.go('website-scanner')" id="btn-website-scanner"
+                class="nav-item w-full text-left px-4 py-3.5 rounded-xl text-slate-400 transition-all duration-300 flex items-center gap-3">
+                <i data-lucide="globe" class="w-4 h-4"></i> Website Scanner
+            </button>
+        </div>
+    </nav>
+
+    <!-- CONTENT -->
+    <main
+        class="flex-1 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] relative flex flex-col items-stretch z-0">
+        <div class="absolute inset-0 bg-slate-950/80 z-[-1]"></div>
+        <div class="absolute inset-x-0 top-0 h-96 bg-gradient-to-b from-indigo-900/10 to-transparent z-[-1]"></div>
+        <header
+            class="h-20 border-b border-white/5 flex items-center justify-between px-10 bg-black/20 backdrop-blur-md">
+            <h2 id="page-title" class="text-2xl font-black text-white flex items-center gap-3 tracking-tight">
+                Dashboard
+            </h2>
+            <div class="flex items-center gap-6">
+                <div
+                    class="px-3 py-1.5 rounded-full bg-slate-800/50 border border-slate-700/50 flex items-center gap-2">
+                    <span
+                        class="block w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse"></span>
+                    <span class="text-[10px] font-bold tracking-widest text-slate-300 uppercase">System Active</span>
+                </div>
+            </div>
+        </header>
+
+        <div id="viewport" class="p-8 overflow-y-auto flex-1">
+            <!-- Dynamic Content -->
+        </div>
+    </main>
+
+    <script>
+        // Dynamic API URL - works on both localhost and Render
+        const API_URL = window.location.origin;
+
+        const pipelineState = {
+            scanId: null,
+            vulnerabilities: [],
+            metrics: {},
+            systemCore: {},
+            complianceData: {},
+            feedbackData: {},
+            terminalLogs: [],
+            availableWebsites: [],
+            currentScanId: 'default',
+            scanStatus: 'COMPLETED',
+            activeVulnId: null,
+            queuingActive: false,
+
+            async fetchAll() {
+                try {
+                    const [vulns, dash, comp, core, sites, pipe] = await Promise.all([
+                        fetch(`${API_URL}/vulnerabilities`).then(r => r.json()),
+                        fetch(`${API_URL}/dashboard`).then(r => r.json()),
+                        fetch(`${API_URL}/compliance`).then(r => r.json()),
+                        fetch(`${API_URL}/system-core`).then(r => r.json()),
+                        fetch(`${API_URL}/available-websites`).then(r => r.json()),
+                        fetch(`${API_URL}/pipeline/status`).then(r => r.json())
+                    ]);
+                    this.vulnerabilities = vulns;
+                    this.metrics = dash;
+                    this.complianceData = comp;
+                    this.systemCore = core;
+                    this.availableWebsites = sites.websites || [];
+                    this.paused = pipe.paused;
+                    this.activeJob = pipe.active;
+                    this.queuingActive = pipe.queuing_active;
+                    this.queue = Array.isArray(pipe.queue) ? pipe.queue : [];
+                    this.queueCount = pipe.queue_count || 0;
+
+                    // NEVER call app.render() here - that causes blinking.
+                    // Only update specific data-bound elements without re-building the DOM shell.
+                    app.smartUpdate();
+                } catch (e) { console.error("Sync Error", e); }
+            },
+
+            async fetchWebsites() {
+                try {
+                    const res = await fetch(`${API_URL}/available-websites`);
+                    const data = await res.json();
+                    this.availableWebsites = data.websites || [];
+                    if (router.current === 'website-scanner') app.render(true);
+                } catch (e) { console.error("Websites Fetch Error", e); }
+            },
+
+            async fetchTerminal() {
+                try {
+                    const [scanRes, pipeRes] = await Promise.all([
+                        fetch(`${API_URL}/terminal-stream?session_id=${this.currentScanId}`),
+                        fetch(`${API_URL}/terminal-stream?session_id=pipeline`)
+                    ]);
+
+                    const scanData = await scanRes.json();
+                    const pipeData = await pipeRes.json();
+
+                    this.terminalLogs = scanData.logs || [];
+                    this.pipelineLogs = pipeData.logs || [];
+
+                    const oldStatus = this.scanStatus;
+                    this.scanStatus = scanData.status || 'COMPLETED';
+                    const foundCount = scanData.found_count;
+
+                    // Detect when ANY scan just finished → show Queue popup
+                    if (oldStatus === 'RUNNING' && this.scanStatus === 'COMPLETED' && !this.scanFinishedFlag) {
+                        this.scanFinishedFlag = true;
+                        app.showToast('✅ Security Scan Complete', 'emerald');
+                        if (foundCount !== undefined && foundCount > 0) {
+                            // Deliberate 3s delay so user can read terminal findings before popup
+                            setTimeout(() => app.showQueueConfirmPopup(foundCount), 3000);
+                        }
+                    }
+
+                    if (router.current === 'terminal') app.renderTerminalOnly();
+                } catch (e) { console.error("Terminal Sync Error", e); }
+            },
+
+            async startPipeline() {
+                try {
+                    await fetch(`${API_URL}/pipeline/start`, { method: 'POST' });
+                    this.paused = false;
+                    app.render();
+                } catch (e) { console.error("Start Pipeline Failed", e); }
+            },
+
+
+
+            async scanWebsite(url) {
+                if (!url || !url.startsWith('http')) {
+                    alert('Please enter a valid HTTP/HTTPS URL.');
+                    return;
+                }
+                console.log("[ACTION] Custom Website Scan:", url);
+                try {
+                    const res = await fetch(`${API_URL}/scan-website`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: url })
+                    });
+                    if (!res.ok) {
+                        const errorText = await res.text();
+                        throw new Error(errorText || `HTTP ${res.status}`);
+                    }
+                    const data = await res.json();
+                    this.currentScanId = data.scan_id;
+                    this.scanStatus = 'RUNNING';
+                    this.scanFinishedFlag = false;
+                    app.terminalMode = 'scan';
+                    router.go('terminal');
+                    this.fetchTerminal();
+                } catch (e) {
+                    console.error("Custom Scan Failed", e);
+                    alert(`Failed to start scan: ${e.message}`);
+                }
+            },
+
+            async scanPredefinedWebsite(id) {
+                console.log("[ACTION] Predefined Scan:", id);
+                try {
+                    const res = await fetch(`${API_URL}/initialize-audit/${id}`, { method: 'POST' });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+                    this.currentScanId = data.scan_id;
+                    this.scanStatus = 'RUNNING';
+                    this.scanFinishedFlag = false;
+                    app.terminalMode = 'scan';
+                    router.go('terminal');
+                    this.fetchTerminal();
+                } catch (e) {
+                    console.error("Predefined Scan Failed", e);
+                    alert(`Failed to start scan: ${e.message}`);
+                }
+            },
+
+            async executiveScan() {
+                console.log("[ACTION] Executive Scan Started");
+                try {
+                    const res = await fetch(`${API_URL}/executive-scan`, { method: 'POST' });
+                    if (!res.ok) {
+                        const errorText = await res.text();
+                        throw new Error(errorText || `HTTP ${res.status}`);
+                    }
+                    const data = await res.json();
+                    this.currentScanId = data.scan_id;
+                    this.scanStatus = 'RUNNING';
+                    this.scanFinishedFlag = false; // Reset flag for popup
+                    // Always go to terminal Scanner Logic tab
+                    app.terminalMode = 'scan';
+                    app.lastPage = null; // Force re-render
+                    router.go('terminal');
+                } catch (e) {
+                    console.error("Executive Scan Failed", e);
+                    alert(`Executive Scan Failed: ${e.message}`);
+                }
+            },
+
+            async executeScan() {
+                console.log("[ACTION] Execute Scan");
+                try {
+                    const res = await fetch(`${API_URL}/scan`, { method: 'POST' });
+                    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                    const data = await res.json();
+                    this.currentScanId = data.scan_id;
+                    this.scanStatus = 'RUNNING';
+                    this.scanFinishedFlag = false;
+                    app.terminalMode = 'scan';
+                    router.go('terminal');
+                    this.fetchTerminal();
+                } catch (e) {
+                    console.error("Scan Failed:", e);
+                    alert(`Scan failed: ${e.message}`);
+                }
+            },
+
+            async generatePatch(id) {
+                try {
+                    await fetch(`${API_URL}/patch/${id}`, { method: 'POST' });
+                    const vuln = this.vulnerabilities.find(v => v.id === id);
+                    if (vuln) vuln.status = "PATCHED";
+                    await this.fetchAll();
+                    router.go('patch-lab');
+                    this.activeVulnId = id;
+                } catch (e) { console.error("Patch Failed", e); }
+            },
+
+            async validatePatch(id) {
+                try {
+                    await fetch(`${API_URL}/validate/${id}`, { method: 'POST' });
+                    const vuln = this.vulnerabilities.find(v => v.id === id);
+                    if (vuln) {
+                        vuln.status = "VALIDATED";
+                        vuln.risk_score = 0;
+                    }
+                    await this.fetchAll();
+                    alert("Patch validated successfully!");
+                    router.go('decision-tree');
+                } catch (e) { console.error("Validation Failed", e); }
+            }
+        };
+
+        const router = {
+            current: 'dashboard',
+            go(page) {
+                this.current = page;
+                document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+                document.getElementById(`btn-${page}`).classList.add('active');
+
+                const titles = {
+                    'dashboard': 'Security Dashboard',
+                    'vulnerabilities': 'Vulnerability Registry',
+                    'patch-lab': 'Patch Lab',
+                    'decision-tree': 'Decision Tree',
+                    'system-core': 'System Core',
+                    'compliance': 'Compliance',
+                    'feedback': 'Feedback',
+                    'terminal': 'Terminal',
+                    'website-scanner': 'Website Scanner'
+                };
+                document.getElementById('page-title').innerText = titles[page];
+                app.render();
+            }
+        };
+
+        const app = {
+            terminalMode: 'scan',
+            lastPage: null, // Track page for stability
+
+            init() {
+                router.go('dashboard');
+                pipelineState.fetchWebsites();
+                setInterval(() => pipelineState.fetchAll(), 400);
+                setInterval(() => pipelineState.fetchTerminal(), 400);
+            },
+
+            async executeScan() {
+                document.getElementById('page-title').innerText = "Scanning filesystem...";
+                await pipelineState.executeScan();
+            },
+
+            async generatePatch(id) {
+                await pipelineState.generatePatch(id);
+            },
+
+            async validatePatch(id) {
+                await pipelineState.validatePatch(id);
+            },
+
+            async submitFeedback(id) {
+                const comment = prompt("Enter comments for this patch:");
+                if (comment) {
+                    await fetch(`${API_URL}/feedback/${id}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ rating: 5, comment: comment })
+                    });
+                    alert("Feedback Submitted!");
+                    await pipelineState.fetchAll();
+                }
+            },
+
+            render(isUpdate = false) {
+                const viewport = document.getElementById('viewport');
+                const page = router.current;
+
+                // For full page transitions, only clear if we actually changed pages
+                if (!isUpdate && this.lastPage !== page) {
+                    viewport.innerHTML = '';
+                    if (page === 'dashboard') this.renderDashboard(viewport);
+                    else if (page === 'vulnerabilities') this.renderVulns(viewport);
+                    else if (page === 'patch-lab') this.renderPatchLab(viewport);
+                    else if (page === 'decision-tree') this.renderTree(viewport);
+                    else if (page === 'system-core') this.renderSystem(viewport);
+                    else if (page === 'compliance') this.renderCompliance(viewport);
+                    else if (page === 'feedback') this.renderFeedback(viewport);
+                    else if (page === 'terminal') this.renderTerminal(viewport);
+                    else if (page === 'website-scanner') this.renderWebsiteScanner(viewport);
+                    this.lastPage = page;
+                    lucide.createIcons();
+                } else {
+                    // Targeted Dynamic Updates
+                    this.renderAutomationStatus(viewport);
+                    if (page === 'dashboard') this.updateDashboardDynamic(viewport);
+                    else if (page === 'vulnerabilities') this.updateVulnsDynamic(viewport);
+                    else if (page === 'terminal') this.updateTerminalLogs();
+                    else if (page === 'decision-tree') this.updateTreeDynamic(viewport);
+                    else if (page === 'system-core') this.updateSystemDynamic(viewport);
+                    else if (page === 'compliance') this.updateComplianceDynamic(viewport);
+                    else if (page === 'website-scanner') {
+                        this.updateWebsiteScannerDynamic(viewport);
+                    }
+                }
+
+                this.renderGlobalOverlays();
+            },
+
+            showIntelligenceHUD(id) {
+                const v = pipelineState.vulnerabilities.find(item => item.id === id);
+                if (!v) return;
+
+                const overlay = document.createElement('div');
+                overlay.id = 'intel-hud-overlay';
+                overlay.className = 'fixed inset-0 z-[100] flex items-center justify-center p-8 bg-black/80 backdrop-blur-md animate-in fade-in duration-300';
+
+                overlay.innerHTML = `
+                    <div class="glass w-full max-w-5xl rounded-[40px] border border-blue-500/30 shadow-[0_0_100px_rgba(59,130,246,0.2)] flex flex-col overflow-hidden max-h-[85vh]">
+                        <div class="p-8 border-b border-white/10 flex justify-between items-center bg-gradient-to-r from-blue-900/10 to-transparent">
+                            <div>
+                                <h2 class="text-3xl font-black text-white tracking-tighter uppercase italic flex items-center gap-4">
+                                    <i data-lucide="brain-circuit" class="w-8 h-8 text-blue-400"></i>
+                                    Technical Intelligence HUD
+                                </h2>
+                                <p class="text-[10px] text-slate-500 font-bold tracking-[0.3em] uppercase mt-2">Neural Analysis for Threat Vector: <span class="text-blue-500 italic">${v.id}</span></p>
+                            </div>
+                            <button onclick="document.getElementById('intel-hud-overlay').remove()" class="p-4 rounded-2xl bg-white/5 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/30 text-slate-400 hover:text-rose-400 transition-all">
+                                <i data-lucide="x" class="w-6 h-6"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="p-10 overflow-y-auto custom-scrollbar flex-1">
+                            <div class="grid grid-cols-2 gap-10">
+                                <!-- Error Side -->
+                                <div class="space-y-6">
+                                    <div class="flex items-center gap-3 text-rose-500 font-black uppercase tracking-[0.2em] text-[11px]">
+                                        <div class="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]"></div>
+                                        Vulnerable Logic Pattern (Error)
+                                    </div>
+                                    <div class="p-8 bg-black/60 rounded-[30px] border border-rose-500/20 shadow-inner relative group">
+                                        <div class="absolute top-4 right-4 text-[9px] font-mono text-rose-500/50 uppercase">Line: ${v.line_number}</div>
+                                        <pre class="text-rose-200 font-mono text-xs leading-relaxed whitespace-pre-wrap">${v.code_snippet || '// No pattern extracted'}</pre>
+                                    </div>
+                                    <div class="p-6 bg-rose-500/5 rounded-2xl border border-rose-500/10">
+                                        <p class="text-rose-400/70 text-[11px] font-bold leading-relaxed italic italic">"Critical logic sink detected. Direct execution or unparameterized data flow allows unauthorized kernel manipulation."</p>
+                                    </div>
+                                </div>
+                                
+                                <!-- Remedy Side -->
+                                <div class="space-y-6">
+                                    <div class="flex items-center gap-3 text-emerald-500 font-black uppercase tracking-[0.2em] text-[11px]">
+                                        <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+                                        Remediation Strategy (Remedy)
+                                    </div>
+                                    <div class="p-8 bg-black/60 rounded-[30px] border border-emerald-500/20 shadow-inner relative group">
+                                        <div class="absolute top-4 right-4 text-[9px] font-mono text-emerald-500/50 uppercase">Secured v4.0.2</div>
+                                        <pre class="text-emerald-300 font-mono text-xs leading-relaxed whitespace-pre-wrap">${v.suggested_fix || v.patched_code || '// AI generating remedy...'}</pre>
+                                    </div>
+                                    <div class="p-6 bg-emerald-500/5 rounded-2xl border border-emerald-500/10">
+                                        <p class="text-emerald-400/70 text-[11px] font-bold leading-relaxed italic">"${v.patch_explanation || 'Adaptive patch synthesis: Replaced raw execution with high-security abstraction layers and input sanitization.'}"</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+ 
+                        <div class="p-8 border-t border-white/10 bg-black/40 flex justify-between items-center text-[10px] text-slate-600 font-black uppercase tracking-widest">
+                            <div class="flex items-center gap-4">
+                                <span class="px-3 py-1 rounded-lg border border-white/5">VEC: ${v.vulnerability_type}</span>
+                                <span class="px-3 py-1 rounded-lg border border-white/5">CONFIDENCE: 99.2%</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <i data-lucide="shield-check" class="w-3 h-3 text-blue-500"></i> PROTECTED BY AUTONOMOUS KERNEL
+                            </div>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+                lucide.createIcons();
+            },
+
+            renderTerminalOnly() {
+                const viewport = document.getElementById('viewport');
+                if (router.current === 'terminal') {
+                    this.updateTerminalLogs();
+                }
+            },
+
+            showPipelinePopup() {
+                // For regular scans (non-executive): ask to start remediation directly
+                const count = pipelineState.vulnerabilities.filter(v => v.status === 'DETECTED').length;
+                if (count === 0) return;
+                if (document.getElementById('pipeline-modal')) return;
+                this.showStartRemediationPopup(count);
+            },
+
+            // POPUP 1: After executive scan - "We found X errors. Queue them?"
+            async showQueueConfirmPopup(foundCount) {
+                if (document.getElementById('pipeline-modal')) return;
+
+                const overlay = document.createElement('div');
+                overlay.id = 'pipeline-modal';
+                overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl px-6';
+                overlay.innerHTML = `
+                    <div class="glass max-w-lg w-full p-10 rounded-[40px] border border-rose-500/30 shadow-[0_0_80px_rgba(225,29,72,0.2)] text-center animate-in zoom-in duration-500">
+                        <div class="w-24 h-24 bg-rose-600/20 text-rose-400 rounded-full flex items-center justify-center mx-auto mb-8 border border-rose-500/30">
+                            <i data-lucide="shield-x" class="w-12 h-12"></i>
+                        </div>
+                        <h3 class="text-3xl font-black text-white mb-4 tracking-tighter uppercase">Scan Complete</h3>
+                        <p class="text-slate-300 mb-10 font-bold leading-relaxed text-base">
+                            We found <span class="text-rose-400 text-2xl font-black px-2">${foundCount} error${foundCount !== 1 ? 's' : ''}</span>
+                            in the system registry.<br/>
+                            <span class="text-slate-500 text-sm mt-2 block">Now I'm going to queue them one-by-one for remediation.<br/>Shall I start queuing?</span>
+                        </p>
+                        <div class="flex gap-4">
+                            <button onclick="document.getElementById('pipeline-modal').remove()"
+                                class="flex-1 px-8 py-5 rounded-2xl border border-white/10 text-slate-500 font-black uppercase tracking-widest text-[10px] hover:bg-white/5 transition-all active:scale-95">
+                                Skip
+                            </button>
+                            <button id="btn-queue-all"
+                                onclick="app.queueAllAndAskToStart()"
+                                class="flex-1 px-8 py-5 rounded-2xl bg-rose-600 text-white font-black uppercase tracking-widest text-[10px] hover:bg-rose-500 shadow-[0_10px_30px_rgba(225,29,72,0.4)] transition-all active:scale-95">
+                                Yes, Queue Them
+                            </button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+                lucide.createIcons();
+            },
+
+            // Called when user accepts queue popup
+            async queueAllAndAskToStart() {
+                const btn = document.getElementById('btn-queue-all');
+                if (btn) { btn.innerText = 'Initializing Ingestion...'; btn.disabled = true; }
+
+                // Switch terminal to automation tab to show queuing logs
+                this.switchTerminalMode('pipeline');
+                router.go('terminal'); // Force navigate to see the logs
+
+                try {
+                    const res = await fetch(`${API_URL}/pipeline/queue-all`, { method: 'POST' });
+                    if (!res.ok) throw new Error('Ingestion failed');
+
+                    // Close queue popup
+                    const modal = document.getElementById('pipeline-modal');
+                    if (modal) modal.remove();
+
+                    // Monitor terminal for completion
+                    let checkInterval = setInterval(() => {
+                        const lastLog = pipelineState.pipelineLogs[pipelineState.pipelineLogs.length - 1];
+                        if (lastLog && lastLog.message.includes('QUEUING_COMPLETE')) {
+                            clearInterval(checkInterval);
+                            // Show start popup with the final count
+                            const queuedCount = pipelineState.vulnerabilities.filter(v => v.status === 'QUEUED_FOR_PATCH').length;
+                            this.showStartRemediationPopup(queuedCount);
+                        }
+                    }, 500);
+                } catch (e) {
+                    console.error("Queue All Failed", e);
+                    const modal = document.getElementById('pipeline-modal');
+                    if (modal) modal.remove();
+                    alert('Failed to initialize queuing: ' + e.message);
+                }
+            },
+
+            // POPUP 2: After queuing - "X queued. Start automated remediation?"
+            showStartRemediationPopup(count) {
+                if (document.getElementById('pipeline-modal')) return;
+
+                const overlay = document.createElement('div');
+                overlay.id = 'pipeline-modal';
+                overlay.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl px-6';
+                overlay.innerHTML = `
+                    <div class="glass max-w-lg w-full p-10 rounded-[40px] border border-blue-500/40 shadow-[0_0_80px_rgba(59,130,246,0.3)] text-center animate-in zoom-in duration-500">
+                        <div class="w-24 h-24 bg-blue-600/20 text-blue-400 rounded-full flex items-center justify-center mx-auto mb-8 animate-pulse border border-blue-500/30">
+                            <i data-lucide="cpu" class="w-12 h-12"></i>
+                        </div>
+                        <h3 class="text-3xl font-black text-white mb-4 tracking-tighter uppercase">Queue Ready</h3>
+                        <p class="text-slate-300 mb-10 font-bold leading-relaxed text-base">
+                            <span class="text-blue-400 text-2xl font-black px-2">${count} vulnerabilit${count !== 1 ? 'ies' : 'y'}</span>
+                            ${count !== 1 ? 'are' : 'is'} queued and ready.<br/>
+                            <span class="text-slate-500 text-sm mt-2 block">Shall I start the auto-remediation kernel?<br/>Each vulnerability will be processed one-by-one (~25s each).</span>
+                        </p>
+                        <div class="flex gap-4">
+                            <button onclick="document.getElementById('pipeline-modal').remove()"
+                                class="flex-1 px-8 py-5 rounded-2xl border border-white/10 text-slate-500 font-black uppercase tracking-widest text-[10px] hover:bg-white/5 transition-all active:scale-95">
+                                Monitor Only
+                            </button>
+                            <button onclick="pipelineState.startPipeline(); document.getElementById('pipeline-modal').remove()"
+                                class="flex-1 px-8 py-5 rounded-2xl bg-blue-600 text-white font-black uppercase tracking-widest text-[10px] hover:bg-blue-500 shadow-[0_10px_30px_rgba(37,99,235,0.4)] transition-all active:scale-95">
+                                Accept &amp; Execute
+                            </button>
+                        </div>
+                    </div>
+                `;
+                document.body.appendChild(overlay);
+                lucide.createIcons();
+            },
+
+
+            renderGlobalOverlays() {
+                // Background status indicator
+                let activeJob = null; // We could fetch /pipeline/status here
+            },
+
+            renderDashboard(el) {
+                const s = pipelineState.metrics;
+                el.innerHTML = `
+                <div class="grid grid-cols-4 gap-6 mb-8">
+                    <div class="glass p-8 rounded-3xl relative overflow-hidden group border border-slate-700/50 shadow-2xl">
+                        <div class="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+                        <div class="flex items-center gap-2 text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] mb-4 relative z-10">
+                            <i data-lucide="layers" class="w-3 h-3 text-blue-500"></i> Total Vulnerabilities
+                        </div>
+                        <div class="text-7xl font-black text-white relative z-10 tracking-tighter drop-shadow-[0_10px_10px_rgba(0,0,0,0.5)]">${s.total || 0}</div>
+                        <div class="absolute -right-4 -bottom-4 opacity-5 pointer-events-none">
+                            <i data-lucide="layers" class="w-32 h-32 text-white"></i>
+                        </div>
+                    </div>
+                    <div class="glass p-8 rounded-3xl relative overflow-hidden group border border-amber-500/20 shadow-2xl">
+                        <div class="absolute inset-0 bg-gradient-to-br from-amber-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+                        <div class="flex items-center gap-2 text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] mb-4 relative z-10">
+                            <i data-lucide="clock" class="w-3 h-3 text-amber-500"></i> Pending Patch
+                        </div>
+                        <div class="text-7xl font-black text-amber-500 relative z-10 tracking-tighter drop-shadow-[0_10px_10px_rgba(245,158,11,0.2)]">${s.patched || 0}</div>
+                        <div class="absolute -right-4 -bottom-4 opacity-5 pointer-events-none">
+                            <i data-lucide="clock" class="w-32 h-32 text-white"></i>
+                        </div>
+                    </div>
+                    <div class="glass p-8 rounded-3xl relative overflow-hidden group border border-emerald-500/20 shadow-2xl">
+                        <div class="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+                        <div class="flex items-center gap-2 text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] mb-4 relative z-10">
+                            <i data-lucide="shield-check" class="w-3 h-3 text-emerald-500"></i> Validated Secure
+                        </div>
+                        <div class="text-7xl font-black text-emerald-400 relative z-10 tracking-tighter drop-shadow-[0_10px_10px_rgba(52,211,153,0.2)]">${s.validated || 0}</div>
+                        <div class="absolute -right-4 -bottom-4 opacity-5 pointer-events-none">
+                            <i data-lucide="shield-check" class="w-32 h-32 text-white"></i>
+                        </div>
+                    </div>
+                    <div class="glass p-8 rounded-3xl relative overflow-hidden group border border-rose-500/20 shadow-2xl">
+                        <div class="absolute inset-0 bg-gradient-to-br from-rose-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700"></div>
+                        <div class="flex items-center gap-2 text-slate-400 text-[10px] font-black uppercase tracking-[0.3em] mb-4 relative z-10">
+                            <i data-lucide="alert-triangle" class="w-3 h-3 text-rose-500"></i> Total Risk Score
+                        </div>
+                        <div class="text-7xl font-black text-rose-500 relative z-10 tracking-tighter drop-shadow-[0_10px_10px_rgba(244,63,94,0.2)]">${s.risk_score || 0}</div>
+                        <div class="absolute -right-4 -bottom-4 opacity-5 pointer-events-none">
+                            <i data-lucide="alert-triangle" class="w-32 h-32 text-white"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass p-12 rounded-[40px] bg-gradient-to-br from-[#0a0a0f] via-[#11111a] to-[#050505] border border-blue-500/20 mb-10 shadow-[0_30px_100px_rgba(0,0,0,0.8)] relative overflow-hidden">
+                    <div class="absolute -top-48 -right-48 w-96 h-96 bg-blue-600/10 blur-[120px] rounded-full pointer-events-none"></div>
+                    <div class="absolute -bottom-48 -left-48 w-96 h-96 bg-indigo-600/10 blur-[120px] rounded-full pointer-events-none"></div>
+                    
+                    <div class="flex justify-between items-start mb-10 relative z-10">
+                        <div>
+                            <h3 class="text-3xl font-black text-white flex items-center gap-4 tracking-tight uppercase italic underline decoration-blue-500 decoration-4 underline-offset-8">
+                                Cyber Defense Pipeline
+                            </h3>
+                            <p class="text-slate-500 text-xs mt-4 font-black tracking-[0.2em] uppercase">Autonomous Remediation Core v4.0.2</p>
+                        </div>
+                        <div id="pipeline-mini-status" class="text-[11px] font-black px-6 py-2 rounded-full border border-blue-500 text-blue-400 bg-blue-900/30 shadow-[0_0_30px_rgba(59,130,246,0.4)] uppercase tracking-[0.3em] transition-all duration-500 animate-pulse">
+                            SCANNING ACTIVE
+                        </div>
+                    </div>
+                    
+                    <div id="pipeline-active-task-container" class="mb-10 relative z-10">
+                        <div class="p-8 bg-black/80 border border-white/10 rounded-[40px] shadow-3xl overflow-hidden relative group">
+                            <div class="absolute inset-0 bg-gradient-to-br from-blue-600/5 to-transparent"></div>
+                            <div class="flex items-center gap-8 relative z-10">
+                                <div class="w-20 h-20 rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-700 to-violet-800 flex items-center justify-center shrink-0 shadow-[0_10px_40px_rgba(59,130,246,0.3)] group-hover:scale-105 transition-transform duration-500">
+                                    <i data-lucide="scan-eye" class="w-10 h-10 text-white animate-pulse"></i>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between mb-4">
+                                        <div class="flex items-center gap-3">
+                                            <span class="flex h-3 w-3 relative">
+                                                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                                <span class="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                                            </span>
+                                            <span class="text-[11px] text-blue-400 font-extrabold uppercase tracking-[0.4em]">Active Processing Stream</span>
+                                        </div>
+                                        <div id="pipeline-percent-large" class="text-4xl font-black text-white font-mono tracking-tighter italic">0%</div>
+                                    </div>
+                                    <div id="pipeline-active-url" class="text-xl font-mono text-white truncate px-6 py-4 bg-slate-950/80 rounded-2xl border border-white/5 shadow-inner group-hover:border-blue-500/30 transition-colors">Awaiting neural lock...</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Phase Tracker UI -->
+                            <div class="mt-8 grid grid-cols-4 gap-4">
+                                <div id="phase-step-1" class="flex flex-col items-center gap-3 p-4 rounded-2xl bg-white/5 border border-white/5 opacity-40 transition-all duration-500">
+                                    <i data-lucide="search" class="w-5 h-5 text-blue-400"></i>
+                                    <span class="text-[9px] font-black uppercase tracking-widest text-slate-400 text-center">Starting Remediation</span>
+                                </div>
+                                <div id="phase-step-2" class="flex flex-col items-center gap-3 p-4 rounded-2xl bg-white/5 border border-white/5 opacity-40 transition-all duration-500">
+                                    <i data-lucide="cpu" class="w-5 h-5 text-indigo-400"></i>
+                                    <span class="text-[9px] font-black uppercase tracking-widest text-slate-400 text-center">Creating Remedy</span>
+                                </div>
+                                <div id="phase-step-3" class="flex flex-col items-center gap-3 p-4 rounded-2xl bg-white/5 border border-white/5 opacity-40 transition-all duration-500">
+                                    <i data-lucide="shield-check" class="w-5 h-5 text-emerald-400"></i>
+                                    <span class="text-[9px] font-black uppercase tracking-widest text-slate-400 text-center">Updating Conditions</span>
+                                </div>
+                                <div id="phase-step-4" class="flex flex-col items-center gap-3 p-4 rounded-2xl bg-white/5 border border-white/5 opacity-40 transition-all duration-500">
+                                    <i data-lucide="check-circle-2" class="w-5 h-5 text-white"></i>
+                                    <span class="text-[9px] font-black uppercase tracking-widest text-slate-400 text-center">Registry Update</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="pipeline-progress-container" class="mb-10 relative z-10">
+                        <div class="h-10 bg-slate-900/80 rounded-2xl overflow-hidden border border-white/10 p-1.5 shadow-2xl relative">
+                            <div id="pipeline-progress-bar" class="h-full bg-gradient-to-r from-blue-600 via-indigo-500 to-emerald-400 rounded-xl shadow-[0_0_50px_rgba(59,130,246,0.7)] transition-all duration-300 relative overflow-hidden" style="width: 0%">
+                                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent animate-[shimmer_0.8s_infinite]"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-6 relative z-10">
+                        <div class="p-8 bg-black/40 rounded-3xl border border-white/5 relative overflow-hidden group hover:border-emerald-500/40 transition-all">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="text-[11px] text-slate-500 uppercase tracking-[0.3em] font-black">AI Accuracy</div>
+                                <i data-lucide="activity" class="w-4 h-4 text-emerald-500"></i>
+                            </div>
+                            <div class="text-6xl font-black text-emerald-400 tracking-tighter">99.2%</div>
+                            <div class="mt-4 text-[10px] text-emerald-500/70 font-bold uppercase tracking-widest italic">_ verified by heuristic neural engine</div>
+                            <div class="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-3xl rounded-full"></div>
+                        </div>
+                        <div class="p-8 bg-black/40 rounded-3xl border border-white/5 relative overflow-hidden group hover:border-blue-500/40 transition-all">
+                            <div class="flex items-center justify-between mb-4">
+                                <div class="text-[11px] text-slate-500 uppercase tracking-[0.3em] font-black">Avg Patch Time</div>
+                                <i data-lucide="zap" class="w-4 h-4 text-blue-500"></i>
+                            </div>
+                            <div class="text-6xl font-black text-blue-400 tracking-tighter">1.8s</div>
+                            <div class="mt-4 text-[10px] text-blue-500/70 font-bold uppercase tracking-widest italic">_ optimized synthesis cycles</div>
+                            <div class="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 blur-3xl rounded-full"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+                lucide.createIcons();
+                this.updateDashboardDynamic(el);
+            },
+
+            updateDashboardDynamic(el) {
+                const s = pipelineState.metrics;
+                const vulns = pipelineState.vulnerabilities;
+
+                // Update basic stats
+                const stats = el.querySelectorAll('.text-7xl');
+                if (stats.length >= 4) {
+                    stats[0].innerText = s.total || 0;
+                    stats[1].innerText = s.patched || 0;
+                    stats[2].innerText = s.validated || 0;
+                    stats[3].innerText = s.risk_score || 0;
+                }
+
+                this.updateProgressBar();
+            },
+
+            updateProgressBar() {
+                const vulns = pipelineState.vulnerabilities;
+                const total = vulns.filter(v => ['DETECTED', 'FIXED', 'PATCHED', 'VALIDATED'].includes(v.status)).length;
+                const fixed = vulns.filter(v => ['FIXED', 'VALIDATED'].includes(v.status)).length;
+
+                const percent = total > 0 ? Math.round((fixed / total) * 100) : 0;
+
+                const bar = document.getElementById('pipeline-progress-bar');
+                const labelLarge = document.getElementById('pipeline-percent-large');
+                if (bar) bar.style.width = `${percent}%`;
+                if (labelLarge) labelLarge.innerText = `${percent}%`;
+
+                const status = document.getElementById('pipeline-mini-status');
+                const taskContainer = document.getElementById('pipeline-active-task-container');
+                const taskUrl = document.getElementById('pipeline-active-url');
+
+                if (status) {
+                    const activeVuln = vulns.find(v => v.status.includes('PATCH') || v.status.includes('QUEUE'));
+                    const isJobActive = !!activeVuln;
+
+                    status.className = `text-[11px] font-black px-6 py-2 rounded-full border uppercase tracking-[0.3em] transition-all duration-500 ${isJobActive || pipelineState.queuingActive ? 'border-blue-500 text-blue-400 bg-blue-900/30 shadow-[0_0_30px_rgba(59,130,246,0.4)] animate-pulse' : 'border-slate-800 text-slate-500 bg-slate-900/50'}`;
+                    status.innerText = pipelineState.queuingActive ? 'REGISTRY INGESTION' : (isJobActive ? 'REMEDIATION IN PROGRESS' : 'ENGINE IDLE');
+
+                    if (taskContainer && taskUrl) {
+                        if (isJobActive) {
+                            taskContainer.style.display = 'block';
+                            taskUrl.innerText = `${activeVuln.target_url || 'LOCAL ENDPOINT'} -> [${activeVuln.vulnerability_type}]`;
+
+                            // Update phase steps
+                            const s = activeVuln.status;
+                            const steps = {
+                                'QUEUED_FOR_PATCH': 1,
+                                'PATCH_GENERATING': 2,
+                                'PATCH_APPLIED': 3,
+                                'FIXED': 4,
+                                'FAILED': 4
+                            };
+                            const currentStep = steps[s] || 1;
+
+                            for (let i = 1; i <= 4; i++) {
+                                const el = document.getElementById(`phase-step-${i}`);
+                                if (!el) continue;
+                                const icon = el.querySelector('i, svg');
+                                if (i < currentStep) {
+                                    el.className = 'flex flex-col items-center gap-3 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 opacity-100 shadow-[0_0_20px_rgba(16,185,129,0.1)] transition-all duration-500';
+                                    if (icon) icon.className.baseVal = 'lucide lucide-check-circle-2 w-5 h-5 text-emerald-400';
+                                } else if (i === currentStep) {
+                                    el.className = 'flex flex-col items-center gap-3 p-4 rounded-2xl bg-blue-600/20 border border-blue-500/50 opacity-100 shadow-[0_0_25px_rgba(59,130,246,0.3)] animate-pulse transition-all duration-500';
+                                    if (icon) icon.className.baseVal = 'lucide lucide-cpu w-5 h-5 text-blue-400 animate-bounce';
+                                } else {
+                                    el.className = 'flex flex-col items-center gap-3 p-4 rounded-2xl bg-white/5 border border-white/5 opacity-30 transition-all duration-500';
+                                    if (icon) icon.className.baseVal = `lucide w-5 h-5 ${i === 2 ? 'text-indigo-400' : i === 3 ? 'text-emerald-400' : i === 4 ? 'text-white' : 'text-blue-400'}`;
+                                }
+                            }
+                        } else if (pipelineState.queuingActive) {
+                            taskContainer.style.display = 'block';
+                            taskUrl.innerHTML = `<span class="text-blue-400 font-bold italic tracking-wider animate-pulse uppercase text-[10px]">Registry Ingestion Active:</span> <span class="text-slate-400">Processing discovered vulnerabilities...</span>`;
+
+                            // Highlight Phase 1 during ingestion
+                            for (let i = 1; i <= 4; i++) {
+                                const el = document.getElementById(`phase-step-${i}`);
+                                if (!el) continue;
+                                if (i === 1) {
+                                    el.className = 'flex flex-col items-center gap-3 p-4 rounded-2xl bg-blue-600/20 border border-blue-500/50 opacity-100 shadow-[0_0_25px_rgba(59,130,246,0.3)] animate-pulse';
+                                } else {
+                                    el.className = 'flex flex-col items-center gap-3 p-4 rounded-2xl bg-white/5 border border-white/5 opacity-20';
+                                }
+                            }
+                        } else {
+                            taskContainer.style.display = 'none';
+                        }
+                    }
+                }
+            },
+
+            updateTerminalLogs() {
+                const body = document.getElementById('terminal-body');
+                if (!body) return;
+
+                const logsSource = this.terminalMode === 'scan'
+                    ? pipelineState.terminalLogs
+                    : (pipelineState.pipelineLogs || []);
+
+                const logsHTML = logsSource.map(log => {
+                    const level = log.level || 'INFO';
+                    const msg = (log.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const time = log.timestamp || '';
+                    let color = 'text-emerald-400';
+                    if (level === 'WARNING') color = 'text-amber-400';
+                    if (level === 'ERROR') color = 'text-rose-500';
+                    if (level === 'SUCCESS') color = 'text-blue-400';
+                    return `<div class="mb-1.5 font-mono text-xs flex gap-3 leading-relaxed">
+                        <span class="text-slate-700 shrink-0 font-bold w-[4rem]">[${time}]</span>
+                        <span class="uppercase shrink-0 w-14 font-black text-[9px] ${color} opacity-80">${level}</span>
+                        <span class="${color}">${msg}</span>
+                    </div>`;
+                }).join('');
+
+                const placeholder = this.terminalMode === 'scan'
+                    ? '<div class="text-slate-700 animate-pulse font-bold tracking-widest">_ Awaiting scanner directives...</div>'
+                    : '<div class="text-slate-700 animate-pulse font-bold tracking-widest">_ Awaiting automation kernel start...</div>';
+
+                const newContent = logsHTML || placeholder;
+
+                // Only update if content has actually changed
+                if (body.getAttribute('data-log-hash') !== String(logsSource.length)) {
+                    body.setAttribute('data-log-hash', String(logsSource.length));
+                    body.innerHTML = newContent;
+                    // Auto-scroll to bottom on new content
+                    body.scrollTop = body.scrollHeight;
+                }
+
+                // Detect all-done state in pipeline mode and show toast once
+                if (this.terminalMode === 'pipeline' && !this._pipelineDoneToastShown) {
+                    const allDone = pipelineState.vulnerabilities.length > 0 &&
+                        pipelineState.vulnerabilities.every(v => v.status === 'FIXED' || v.status === 'VALIDATED' || v.status === 'FAILED');
+                    const noPipeline = !pipelineState.activeJob && pipelineState.queue && pipelineState.queue.length === 0;
+                    if (allDone && noPipeline) {
+                        this._pipelineDoneToastShown = true;
+                        this.showToast('✅ All vulnerabilities processed. Pipeline complete!', 'emerald');
+                    }
+                }
+                // Reset flag when new jobs come in
+                if (pipelineState.activeJob || (pipelineState.queue && pipelineState.queue.length > 0)) {
+                    this._pipelineDoneToastShown = false;
+                }
+            },
+
+            showToast(message, color = 'blue') {
+                // Remove any existing toast
+                const existing = document.getElementById('seclab-toast');
+                if (existing) existing.remove();
+
+                const toast = document.createElement('div');
+                toast.id = 'seclab-toast';
+                toast.className = `fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-8 py-4 rounded-2xl glass border border-${color}-500/40 text-${color}-300 font-black text-sm shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-3 transition-all duration-500 opacity-0`;
+                toast.innerHTML = `<span>${message}</span>`;
+                document.body.appendChild(toast);
+                requestAnimationFrame(() => { toast.style.opacity = '1'; });
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    setTimeout(() => toast.remove(), 600);
+                }, 5000);
+            },
+
+            updateVulnsDynamic(el) {
+                const tbody = el.querySelector('tbody');
+                if (!tbody) return;
+
+                // Create a hash based on the content that changes (id + status)
+                const stateHash = pipelineState.vulnerabilities.map(v => v.id + '-' + v.status).join('|');
+
+                if (tbody.getAttribute('data-render-hash') !== stateHash) {
+                    const rows = pipelineState.vulnerabilities.map(v => `
+                    <tr class="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
+                        <td class="p-6 font-mono text-[11px] text-blue-500 font-bold tracking-wider">${v.id}</td>
+                        <td class="p-6">
+                            <div class="text-white font-black text-sm mb-1 tracking-tight italic">${v.vulnerability_type}</div>
+                            <div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${v.file_name}</div>
+                        </td>
+                        <td class="p-6">
+                            <span class="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-rose-500/10 text-rose-500 border border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.1)]">
+                                <i data-lucide="shield-alert" class="w-2.5 h-2.5 mr-1.5"></i> ${v.severity}
+                            </span>
+                        </td>
+                        <td class="p-6">
+                            <div class="font-mono text-slate-400 text-[11px] bg-black/40 px-3 py-2 rounded-xl border border-white/5 truncate max-w-[200px]" title="${v.target_url}">
+                                ${v.target_url || 'LOCAL KERNEL'}
+                            </div>
+                        </td>
+                        <td class="p-6">
+                            <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${v.status === 'FIXED' || v.status === 'VALIDATED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]' :
+                            v.status.includes('PATCH') ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
+                                'bg-slate-800/40 text-slate-400 border border-white/10'
+                        }">
+                                ${v.status.replace(/_/g, ' ')}
+                            </span>
+                        </td>
+                        <td class="p-6 text-right">
+                            <div class="flex items-center justify-end gap-3">
+                                <button onclick="app.showIntelligenceHUD('${v.id}')" 
+                                        class="p-2 rounded-xl bg-blue-500/10 hover:bg-blue-600 border border-blue-500/20 hover:border-blue-400 text-blue-400 hover:text-white transition-all shadow-lg group-hover:scale-110 active:scale-90"
+                                        title="Technical Intelligence Analysis">
+                                    <i data-lucide="brain-circuit" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="pipelineState.activeVulnId = '${v.id}'; router.go('patch-lab')" 
+                                        class="p-2 rounded-xl bg-white/5 hover:bg-blue-600 border border-white/10 hover:border-blue-400 text-slate-400 hover:text-white transition-all shadow-lg group-hover:scale-110">
+                                    <i data-lucide="eye" class="w-4 h-4"></i>
+                                </button>
+                                <button onclick="app.submitFeedback('${v.id}')" 
+                                        class="p-2 rounded-xl bg-white/5 hover:bg-emerald-600 border border-white/10 hover:border-emerald-400 text-slate-400 hover:text-white transition-all shadow-lg group-hover:scale-110">
+                                    <i data-lucide="message-square" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>`).join('');
+
+                    tbody.innerHTML = rows;
+                    tbody.setAttribute('data-render-hash', stateHash);
+                    lucide.createIcons();
+                }
+            },
+
+            updateWebsiteScannerDynamic(el) {
+                const container = el.querySelector('.grid.grid-cols-2.gap-8.mt-12');
+                if (!container) return;
+
+                const sites = pipelineState.availableWebsites.map(s => `
+                <div class="glass p-8 rounded-[30px] border border-white/5 hover:border-blue-500/30 transition-all flex flex-col justify-between group bg-black/40 relative overflow-hidden">
+                    <div class="absolute inset-0 bg-gradient-to-br from-blue-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="relative z-10">
+                        <div class="flex items-center gap-4 mb-6">
+                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-black border border-white/10 flex items-center justify-center text-blue-400 shadow-lg group-hover:scale-110 transition-transform">
+                                <i data-lucide="globe" class="w-7 h-7"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-white font-black leading-tight text-lg tracking-tight italic uppercase">${s.name}</h4>
+                                <div class="text-[9px] text-blue-500 font-black tracking-[0.2em] uppercase">Target ID: ${s.id}</div>
+                            </div>
+                        </div>
+                        <div class="bg-[#050505] rounded-2xl p-4 mb-6 border border-white/5 shadow-inner">
+                            <div class="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mb-2">Authenticated Endpoint</div>
+                            <div class="text-xs font-mono text-emerald-500 truncate bg-emerald-500/5 p-2 rounded-lg border border-emerald-500/10">${s.url}</div>
+                        </div>
+                    </div>
+                    <button onclick="pipelineState.scanPredefinedWebsite('${s.id}')" 
+                        class="w-full py-4 rounded-2xl bg-white/5 border border-white/10 text-white font-black uppercase tracking-[0.2em] text-[10px] hover:bg-blue-600 hover:border-blue-500 hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all relative z-10 active:scale-95">
+                        Initialize Neural Audit
+                    </button>
+                </div>`).join('');
+
+                const hash = pipelineState.availableWebsites.map(s => s.id).join(',');
+                if (container.getAttribute('data-render-hash') !== hash) {
+                    container.innerHTML = sites;
+                    container.setAttribute('data-render-hash', hash);
+                    lucide.createIcons();
+                }
+            },
+
+            smartUpdate() {
+                this.render(true);
+            },
+
+            renderVulns(el) {
+                const rows = pipelineState.vulnerabilities.map(v => `
+                <tr class="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
+                    <td class="p-6 font-mono text-[11px] text-blue-500 font-bold tracking-wider">${v.id}</td>
+                    <td class="p-6">
+                        <div class="text-white font-black text-sm mb-1 tracking-tight italic">${v.vulnerability_type}</div>
+                        <div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${v.file_name}</div>
+                    </td>
+                    <td class="p-6">
+                        <span class="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-rose-500/10 text-rose-500 border border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.1)]">
+                            <i data-lucide="shield-alert" class="w-2.5 h-2.5 mr-1.5"></i> ${v.severity}
+                        </span>
+                    </td>
+                    <td class="p-6">
+                        <div class="font-mono text-slate-400 text-[11px] bg-black/40 px-3 py-2 rounded-xl border border-white/5 truncate max-w-[200px]" title="${v.target_url}">
+                            ${v.target_url || 'LOCAL KERNEL'}
+                        </div>
+                    </td>
+                    <td class="p-6">
+                        <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${v.status === 'FIXED' || v.status === 'VALIDATED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]' :
+                        v.status.includes('PATCH') ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
+                            'bg-slate-800/40 text-slate-400 border border-white/10'
+                    }">
+                            ${v.status.replace(/_/g, ' ')}
+                        </span>
+                    </td>
+                    <td class="p-6 text-right">
+                        <div class="flex items-center justify-end gap-3">
+                            <button onclick="app.showIntelligenceHUD('${v.id}')" 
+                                    class="p-2 rounded-xl bg-blue-500/10 hover:bg-blue-600 border border-blue-500/20 hover:border-blue-400 text-blue-400 hover:text-white transition-all shadow-lg group-hover:scale-110 active:scale-90"
+                                    title="Technical Intelligence Analysis">
+                                <i data-lucide="brain-circuit" class="w-4 h-4"></i>
+                            </button>
+                            <button onclick="pipelineState.activeVulnId = '${v.id}'; router.go('patch-lab')" 
+                                    class="p-2 rounded-xl bg-white/5 hover:bg-blue-600 border border-white/10 hover:border-blue-400 text-slate-400 hover:text-white transition-all shadow-lg group-hover:scale-110">
+                                <i data-lucide="eye" class="w-4 h-4"></i>
+                            </button>
+                            <button onclick="app.submitFeedback('${v.id}')" 
+                                    class="p-2 rounded-xl bg-white/5 hover:bg-emerald-600 border border-white/10 hover:border-emerald-400 text-slate-400 hover:text-white transition-all shadow-lg group-hover:scale-110">
+                                <i data-lucide="message-square" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+
+                el.innerHTML = `
+                <div class="glass rounded-[35px] overflow-hidden border border-white/10 shadow-3xl bg-[#020617]/40 backdrop-blur-3xl">
+                    <div class="p-8 border-b border-white/5 flex justify-between items-center bg-gradient-to-r from-blue-900/10 to-transparent">
+                        <div>
+                            <h3 class="text-2xl font-black text-white tracking-tight uppercase italic mb-1">Threat Vector Spectrum</h3>
+                            <p class="text-[10px] text-slate-500 font-bold tracking-[0.3em] uppercase opacity-70">Live remediation kernel synchronization active</p>
+                        </div>
+                        <div class="flex gap-4">
+                            <div class="px-4 py-2 rounded-2xl bg-black/40 border border-white/5 flex items-center gap-2">
+                                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                                <span class="text-[10px] font-black text-slate-400 tracking-widest uppercase">Kernel Online</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse">
+                            <thead class="bg-black/60 text-[11px] text-slate-500 uppercase font-black tracking-[0.4em] border-b border-white/5">
+                                <tr>
+                                    <th class="p-8">Registry ID</th>
+                                    <th class="p-8">Vector Signature</th>
+                                    <th class="p-8">Criticality</th>
+                                    <th class="p-8">Logical Source</th>
+                                    <th class="p-8">Kernel Status</th>
+                                    <th class="p-8 text-right">Directives</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-white/[0.03] text-sm">${rows || '<tr><td colspan="6" class="p-40 text-center text-slate-700 font-black tracking-[0.5em] italic uppercase opacity-50 animate-pulse">_ Awaiting neural scan data...</td></tr>'}</tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+                lucide.createIcons();
+            },
+
+            renderPatchLab(el) {
+                const v = pipelineState.vulnerabilities.find(i => i.id === pipelineState.activeVulnId);
+                if (!v) {
+                    el.innerHTML = `
+                        <div class="flex flex-col items-center justify-center h-full text-center">
+                            <i data-lucide="file-search" class="w-16 h-16 text-slate-700 mb-4"></i>
+                            <div class="text-slate-500 text-lg font-bold">No Vulnerability Selected</div>
+                            <div class="text-slate-600 text-sm mt-2">Navigate to Vulnerabilities tab and click "Review Fix" to analyze patches.</div>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                    return;
+                }
+
+                // Handle diff display - show proper message if not generated yet
+                let diffContent = v.diff;
+                if (!diffContent || diffContent.trim() === '' || diffContent === 'null') {
+                    if (v.status === 'DETECTED') {
+                        diffContent = '// Click "Generate Patch" in the Vulnerabilities tab first\n// to see the proposed fix here.';
+                    } else if (v.status === 'PATCHED') {
+                        diffContent = v.suggested_fix || '// Patch generated but diff not available\n// You can still validate this fix.';
+                    } else {
+                        diffContent = '// No patch data available';
+                    }
+                }
+
+                el.innerHTML = `
+                <div class="flex flex-col h-full">
+                    <div class="mb-6 flex justify-between items-end">
+                        <div class="glass p-6 rounded-2xl border-l-4 border-emerald-500 bg-black/40 inline-block">
+                            <h3 class="text-2xl font-black text-white mb-1 tracking-tight">Remediation Analysis</h3>
+                            <p class="text-slate-400 text-xs">Review AI-proposed patch for threat <span class="text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded tracking-widest">${v.id}</span></p>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-8 flex-1">
+                        <div class="glass rounded-3xl p-6 flex flex-col border border-rose-500/20 shadow-[0_10px_40px_-15px_rgba(244,63,94,0.2)] relative overflow-hidden">
+                            <div class="absolute top-0 right-0 w-64 h-64 bg-rose-500/5 blur-3xl rounded-full pointer-events-none"></div>
+                            <div class="text-[10px] font-black tracking-[0.2em] text-rose-500 mb-4 uppercase flex justify-between items-center relative z-10 border-b border-rose-500/10 pb-4">
+                                <span class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"></div> Vulnerable Structure</span> 
+                                <span class="bg-rose-500/10 px-3 py-1 rounded shadow-sm text-rose-400">Risk Profile: ${v.risk_score}/10</span>
+                            </div>
+                            <div class="text-[11px] text-slate-500 mb-4 space-y-2 relative z-10 bg-black/20 p-4 rounded-xl font-mono tracking-wider">
+                                <div class="flex items-center justify-between group">
+                                    <span><span class="text-slate-600 uppercase tracking-widest text-[9px]">Target:</span> <span class="text-blue-400">${v.target_url || 'LOCAL'}</span></span>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">File:</span> <span class="text-slate-300 font-bold">${v.file_name}</span></div>
+                                    <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">Line:</span> <span class="text-rose-400 font-bold">${v.line_number}</span></div>
+                                </div>
+                            </div>
+                            <div class="bg-black/80 p-5 rounded-2xl border border-white/5 relative flex-1 flex flex-col shadow-inner z-10 overflow-hidden group">
+                                <div class="absolute left-0 top-0 bottom-0 w-8 bg-slate-900 border-r border-white/5 flex flex-col items-center pt-5 text-[9px] text-slate-600 font-mono">
+                                    <span>1</span><span>2</span><span>3</span>
+                                </div>
+                                <pre class="text-rose-200 font-mono text-[11px] leading-relaxed overflow-auto flex-1 pl-10 pr-2">${v.code_snippet || '// No code snippet available'}</pre>
+                            </div>
+                        </div>
+                        
+                        <div class="glass rounded-3xl p-6 flex flex-col border border-emerald-500/30 shadow-[0_10px_40px_-15px_rgba(16,185,129,0.2)] relative overflow-hidden">
+                            <div class="absolute top-0 left-0 w-64 h-64 bg-emerald-500/5 blur-3xl rounded-full pointer-events-none"></div>
+                            <div class="text-[10px] font-black tracking-[0.2em] text-emerald-400 mb-4 uppercase flex justify-between items-center relative z-10 border-b border-emerald-500/10 pb-4">
+                                <span class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div> Secure Infusion</span> 
+                                <span class="bg-emerald-500/10 px-3 py-1 rounded shadow-sm text-emerald-400">Confidence: ${Math.round((v.confidence_score || 0) * 100)}%</span>
+                            </div>
+                            <div class="text-[11px] text-slate-400 mb-4 flex gap-6 relative z-10 bg-black/20 p-4 rounded-xl font-mono tracking-wider">
+                                <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">Vector:</span> <span class="text-emerald-400 font-bold ml-1">${v.vulnerability_type}</span></div>
+                                <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">Class:</span> <span class="text-amber-400 font-bold ml-1">${v.severity}</span></div>
+                            </div>
+                            <div class="bg-black/80 p-5 rounded-2xl border border-white/5 relative flex-1 flex flex-col shadow-inner z-10 overflow-hidden">
+                                <pre class="text-emerald-300 font-mono text-[11px] leading-relaxed overflow-auto flex-1">${diffContent}</pre>
+                            </div>
+                            
+                            <div class="mt-6 flex relative z-10">
+                                ${v.status === 'FIXED' ?
+                        '<div class="px-6 py-4 w-full text-center text-emerald-400 tracking-[0.2em] text-[10px] font-black border border-emerald-500/50 rounded-xl bg-emerald-900/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]">✓ SECURE DEPLOYMENT VALIDATED</div>' :
+                        v.status === 'FAILED' ?
+                            '<div class="px-6 py-4 w-full text-center text-rose-500 tracking-[0.2em] text-[10px] font-black border border-rose-500/50 rounded-xl bg-rose-900/30 shadow-[0_0_20px_rgba(244,63,94,0.2)]">⚠ AUTOMATION KERNEL PANIC</div>' :
+                            `<div class="px-6 py-4 w-full text-center text-blue-400 tracking-[0.2em] text-[10px] font-black border border-blue-500/50 rounded-xl bg-blue-900/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]">⚙ GENERATING LOGIC PATCH...</div>`
+                    }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            },
+
+            renderTree(el) {
+                // Calculate aggregate pipeline status from all vulnerabilities
+                const vulns = pipelineState.vulnerabilities;
+                const detected = vulns.filter(v => v.status === 'DETECTED').length;
+                const patched = vulns.filter(v => v.status === 'PATCHED').length;
+                const validated = vulns.filter(v => v.status === 'VALIDATED').length;
+
+                const steps = [
+                    { name: 'DETECTED', count: detected, color: 'red' },
+                    { name: 'PATCHED', count: patched, color: 'amber' },
+                    { name: 'VALIDATED', count: validated, color: 'emerald' },
+                    { name: 'FIXED', count: validated, color: 'blue' }
+                ];
+
+                const html = steps.map((step, i) => {
+                    const active = step.count > 0;
+                    return `
+                <div class="flex flex-col items-center">
+                    <div class="w-24 h-24 rounded-full flex items-center justify-center border-4 ${active
+                            ? `border-${step.color}-500 bg-${step.color}-500/20 text-white`
+                            : 'border-slate-800 bg-slate-900 text-slate-700'
+                        } font-bold transition-all duration-500">
+                        <div class="text-center">
+                            <div class="text-3xl">${step.count}</div>
+                            <div class="text-xs text-slate-500">${step.name}</div>
+                        </div>
+                    </div>
+                    <div class="mt-4 font-bold text-sm tracking-widest ${active ? `text-${step.color}-400` : 'text-slate-600'
+                        }">${step.name}</div>
+                </div>
+                ${i < steps.length - 1 ? '<div class="flex-1 h-1 bg-slate-800 mx-4 self-center"></div>' : ''}
+            `;
+                }).join('');
+
+                el.innerHTML = `<div class="flex flex-col items-center justify-center h-full"><div class="flex">${html}</div></div>`;
+            },
+
+            renderSystem(el) {
+                const s = pipelineState.systemCore;
+                const accuracy = s.engine_accuracy || 0;
+                const riskScore = s.current_risk_score || 0;
+
+                // Risk meter color
+                const riskColor = riskScore > 50 ? 'red' : riskScore > 20 ? 'amber' : 'emerald';
+
+                el.innerHTML = `
+                <div class="grid grid-cols-3 gap-8 mb-10">
+                    <div class="glass p-10 rounded-3xl text-center border-t border-t-white/10 relative overflow-hidden shadow-[0_20px_40px_-15px_rgba(59,130,246,0.2)]">
+                        <div class="absolute inset-0 bg-blue-500/5"></div>
+                        <div class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Engine Accuracy</div>
+                        <div class="text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-500 relative z-10 tracking-tighter shadow-sm">${accuracy}%</div>
+                        <div class="mt-6 h-3 bg-black/60 rounded-full overflow-hidden p-0.5 border border-white/5 relative z-10">
+                            <div class="h-full bg-gradient-to-r from-blue-500 to-indigo-400 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.8)]" style="width: ${accuracy}%"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="glass p-10 rounded-3xl text-center border-t border-t-white/10 relative overflow-hidden shadow-[0_20px_40px_-15px_rgba(244,63,94,0.1)]">
+                        <div class="absolute inset-0 bg-${riskColor}-500/5"></div>
+                        <div class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Current Risk Score</div>
+                        <div class="text-7xl font-black text-${riskColor}-500 relative z-10 tracking-tighter filter drop-shadow-[0_0_15px_rgba(244,63,94,0.3)]">${riskScore}</div>
+                        <div class="mt-4 inline-block px-4 py-1.5 rounded-full border border-${riskColor}-500/30 bg-${riskColor}-900/20 text-[10px] tracking-widest font-black text-${riskColor}-400 uppercase relative z-10">${riskScore > 50 ? 'CRITICAL RISK' : riskScore > 20 ? 'MODERATE RISK' : 'SECURE'}</div>
+                    </div>
+                    
+                    <div class="glass p-10 rounded-3xl text-center border-t border-t-white/10 relative overflow-hidden shadow-[0_20px_40px_-15px_rgba(16,185,129,0.15)]">
+                        <div class="absolute inset-0 bg-emerald-500/5"></div>
+                        <div class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Patch Success Rate</div>
+                        <div class="text-7xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-500 relative z-10 tracking-tighter">${s.validated_count || 0}/${s.patched_count || 0}</div>
+                        <div class="mt-6 text-[11px] text-emerald-500/80 font-black tracking-widest uppercase relative z-10">VALIDATED SECURE</div>
+                    </div>
+                </div>
+                
+                <div class="glass p-10 rounded-3xl bg-black/40 border border-white/5">
+                    <h3 class="text-2xl font-black text-white mb-8 tracking-tight">Deep Diagnostics</h3>
+                    <div class="grid grid-cols-3 gap-8 text-center divide-x divide-white/5">
+                        <div class="px-4">
+                            <div class="text-5xl font-black text-white tracking-tighter">${s.total_scans || 0}</div>
+                            <div class="text-[10px] text-slate-500 font-black tracking-[0.2em] uppercase mt-3">Total Operations</div>
+                        </div>
+                        <div class="px-4">
+                            <div class="text-5xl font-black text-rose-500 tracking-tighter">${s.total_vulnerabilities || 0}</div>
+                            <div class="text-[10px] text-slate-500 font-black tracking-[0.2em] uppercase mt-3">Threats Identified</div>
+                        </div>
+                        <div class="px-4">
+                            <div class="text-5xl font-black text-emerald-400 tracking-tighter">${s.validated_count || 0}</div>
+                            <div class="text-[10px] text-slate-500 font-black tracking-[0.2em] uppercase mt-3">Threats Eliminated</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            },
+
+            renderCompliance(el) {
+                const c = pipelineState.complianceData;
+
+                // Build breakdown chart
+                const breakdownHTML = Object.entries(c.fix_breakdown_by_type || {}).map(([type, count]) => `
+                <div class="flex justify-between items-center py-3 border-b border-slate-800">
+                    <span class="text-white font-medium">${type}</span>
+                    <div class="flex items-center gap-3">
+                        <div class="h-2 w-32 bg-slate-800 rounded-full overflow-hidden">
+                            <div class="h-full bg-emerald-500" style="width: ${(count / c.total_fixed * 100) || 0}%"></div>
+                        </div>
+                        <span class="text-emerald-400 font-bold text-sm">${count}</span>
+                    </div>
+                </div>
+            `).join('');
+
+                // Build history table
+                const historyHTML = (c.history || []).map(h => `
+                <tr class="border-b border-slate-800 hover:bg-slate-900/50">
+                    <td class="p-3 text-slate-400 font-mono text-xs">${h.date}</td>
+                    <td class="p-3 text-white font-medium">${h.vulnerability_type}</td>
+                    <td class="p-3 text-slate-400 text-sm">${h.file_name}</td>
+                    <td class="p-3"><span class="bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded text-xs font-bold">FIXED</span></td>
+                </tr>
+            `).join('');
+
+                el.innerHTML = `
+                <div class="grid grid-cols-3 gap-8 mb-10">
+                    <div class="glass p-8 rounded-3xl text-center border-l-4 border-emerald-500 relative overflow-hidden shadow-[0_10px_30px_-15px_rgba(16,185,129,0.3)]">
+                        <div class="absolute inset-0 bg-emerald-500/5"></div>
+                        <div class="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Total Fixed</div>
+                        <div id="compliance-total-fixed" class="text-6xl font-black text-emerald-400 relative z-10 tracking-tighter">${c.total_fixed || 0}</div>
+                    </div>
+                    <div class="glass p-8 rounded-3xl text-center border-l-4 border-rose-500 relative overflow-hidden shadow-[0_10px_30px_-15px_rgba(244,63,94,0.3)]">
+                        <div class="absolute inset-0 bg-rose-500/5"></div>
+                        <div class="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Open Issues</div>
+                        <div class="text-6xl font-black text-rose-500 relative z-10 tracking-tighter">${c.open_count || 0}</div>
+                    </div>
+                    <div class="glass p-8 rounded-3xl text-center border-l-4 border-blue-500 relative overflow-hidden shadow-[0_10px_30px_-15px_rgba(59,130,246,0.3)]">
+                        <div class="absolute inset-0 bg-blue-500/5"></div>
+                        <div class="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Closed Issues</div>
+                        <div class="text-6xl font-black text-blue-400 relative z-10 tracking-tighter">${c.closed_count || 0}</div>
+                    </div>
+                </div>
+                <div id="compliance-container-dynamic" data-render-hash="">
+                    <!-- Dynamic Content -->
+                </div>
+            `;
+                this.updateComplianceDynamic(el);
+            },
+
+            updateWebsiteScannerDynamic(el) {
+                // Keep the "Executive Scan" button in sync with engine status
+                const btn = document.querySelector('button[onclick*="executiveScan"]');
+                if (btn) {
+                    const isScanning = pipelineState.scanStatus === 'RUNNING';
+                    if (isScanning) {
+                        btn.innerText = 'SCANNING IN PROGRESS...';
+                        btn.disabled = true;
+                        btn.classList.add('opacity-50', 'animate-pulse');
+                    } else {
+                        btn.innerHTML = '<i data-lucide="shield-alert" class="w-6 h-6 animate-pulse"></i> RUN EXECUTIVE PROTOCOL';
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-50', 'animate-pulse');
+                        lucide.createIcons();
+                    }
+                }
+            },
+
+            updateTreeDynamic(el) {
+                const vulns = pipelineState.vulnerabilities;
+                const detected = vulns.filter(v => v.status === 'DETECTED').length;
+                const patched = vulns.filter(v => v.status === 'PATCHED').length;
+                const validated = vulns.filter(v => v.status === 'VALIDATED').length;
+
+                const steps = [
+                    { id: 'tree-step-detected', count: detected },
+                    { id: 'tree-step-patched', count: patched },
+                    { id: 'tree-step-validated', count: validated }
+                ];
+
+                steps.forEach(s => {
+                    const node = document.getElementById(s.id);
+                    if (node) {
+                        const countEl = node.querySelector('.text-3xl');
+                        if (countEl) countEl.innerText = s.count;
+                        if (s.count > 0) {
+                            node.classList.add('animate-pulse', 'border-blue-500', 'bg-blue-500/10');
+                        }
+                    }
+                });
+            },
+
+            updateSystemDynamic(el) {
+                const s = pipelineState.systemCore;
+                const accuracyEl = document.getElementById('system-accuracy-val');
+                const riskEl = document.getElementById('system-risk-val');
+                if (accuracyEl) accuracyEl.innerText = `${s.engine_accuracy || 0}%`;
+                if (riskEl) riskEl.innerText = s.current_risk_score || 0;
+            },
+
+            updateComplianceDynamic(el) {
+                const c = pipelineState.complianceData;
+                const totalEl = document.getElementById('compliance-total-fixed');
+                if (totalEl) totalEl.innerText = c.total_fixed || 0;
+            },
+            renderFeedback(el) {
+                const f = pipelineState.feedbackData;
+                const comments = (f.comments || []).map(c => `
+                <div class="bg-slate-900/50 border border-slate-800 p-4 rounded-lg mb-3">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-blue-400 font-mono text-xs">${c.vulnerability_id}</span>
+                        <div class="flex gap-1 text-amber-500">
+                            ${Array(c.rating).fill('★').join('')}
+                        </div>
+                    </div>
+                    <p class="text-slate-300 text-sm italic">"${c.comment}"</p>
+                    <div class="mt-2 text-right text-[10px] text-slate-600 uppercase font-bold">${c.created_at}</div>
+                </div>`).join('');
+
+                el.innerHTML = `
+                <div class="grid grid-cols-2 gap-8 h-[600px]">
+                    <div class="glass p-10 rounded-3xl flex flex-col items-center justify-center text-center relative overflow-hidden border border-amber-500/20 shadow-[0_10px_40px_-15px_rgba(245,158,11,0.2)]">
+                        <div class="absolute inset-0 bg-amber-500/5 blur-3xl rounded-full"></div>
+                        <div class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em] mb-4 relative z-10">Average Security Rating</div>
+                        <div class="text-9xl font-black text-amber-500 mb-6 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)] relative z-10">${f.average_rating || 0}</div>
+                        <div class="flex gap-2 text-3xl text-amber-500 mb-8 relative z-10">
+                            ${Array(Math.round(f.average_rating || 0)).fill('★').join('')}
+                        </div>
+                        <div class="px-4 py-1.5 rounded-full border border-amber-500/30 bg-amber-900/20 text-[10px] tracking-widest font-black text-amber-400 uppercase relative z-10">${f.total_feedback || 0} Submissions</div>
+                    </div>
+                    
+                    <div class="flex flex-col h-full glass rounded-3xl border border-white/5 p-8 relative overflow-hidden">
+                        <h3 class="text-white font-black text-xl mb-6 tracking-tight relative z-10">Community Feedback</h3>
+                        <div class="flex-1 overflow-y-auto pr-4 custom-scrollbar relative z-10">
+                            ${comments || '<div class="h-full flex items-center justify-center text-slate-500 font-black uppercase tracking-[0.2em] text-[10px]">No feedback submitted yet.<br>Validate a patch to submit feedback.</div>'}
+                        </div>
+                    </div>
+                </div>`;
+            },
+
+            // Called once when navigating to terminal - builds static shell
+            renderTerminal(el) {
+                el.innerHTML = `
+                <div class="h-full flex flex-col glass rounded-3xl border border-white/10 overflow-hidden shadow-[0_20px_50px_-15px_rgba(0,0,0,0.5)]">
+                    <div class="bg-black/60 backdrop-blur-xl px-6 py-4 border-b border-white/10 flex items-center justify-between shadow-md">
+                        <div class="flex items-center gap-6">
+                            <button id="term-tab-scan"
+                                onclick="app.switchTerminalMode('scan')"
+                                class="text-[11px] font-black uppercase tracking-[0.2em] transition-all relative pb-2 ${this.terminalMode === 'scan' ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 hover:text-white'}">
+                                Scanner Logic
+                            </button>
+                            <button id="term-tab-pipeline"
+                                onclick="app.switchTerminalMode('pipeline')"
+                                class="text-[11px] font-black uppercase tracking-[0.2em] transition-all relative pb-2 ${this.terminalMode === 'pipeline' ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 hover:text-white'}">
+                                Automation Kernel
+                            </button>
+                        </div>
+                        <div class="text-[9px] text-slate-600 font-black uppercase tracking-[0.3em] flex items-center gap-2">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse block"></span> Live Shell Console
+                        </div>
+                    </div>
+                    <div id="terminal-body" class="flex-1 p-8 overflow-y-auto custom-scrollbar font-mono bg-[#050505] border-t border-black">
+                        <div class="text-slate-700 animate-pulse font-bold tracking-widest">_ Initializing console...</div>
+                    </div>
+                </div>`;
+                // Populate with correct segment on first render
+                this.updateTerminalLogs();
+            },
+
+            // Switch segment WITHOUT re-rendering the shell
+            switchTerminalMode(mode) {
+                this.terminalMode = mode;
+                const scanBtn = document.getElementById('term-tab-scan');
+                const pipeBtn = document.getElementById('term-tab-pipeline');
+                if (scanBtn) {
+                    scanBtn.className = `text-[11px] font-black uppercase tracking-[0.2em] transition-all relative pb-2 ${mode === 'scan' ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 hover:text-white'}`;
+                }
+                if (pipeBtn) {
+                    pipeBtn.className = `text-[11px] font-black uppercase tracking-[0.2em] transition-all relative pb-2 ${mode === 'pipeline' ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 hover:text-white'}`;
+                }
+                this.updateTerminalLogs();
+            },
+
+            renderWebsiteScanner(el) {
+                const sites = pipelineState.availableWebsites.map(s => `
+                <div class="glass p-8 rounded-[30px] border border-white/5 hover:border-blue-500/30 transition-all flex flex-col justify-between group bg-black/40 relative overflow-hidden">
+                    <div class="absolute inset-0 bg-gradient-to-br from-blue-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                    <div class="relative z-10">
+                        <div class="flex items-center gap-4 mb-6">
+                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-black border border-white/10 flex items-center justify-center text-blue-400 shadow-lg group-hover:scale-110 transition-transform">
+                                <i data-lucide="globe" class="w-7 h-7"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-white font-black leading-tight text-lg tracking-tight italic uppercase">${s.name}</h4>
+                                <div class="text-[9px] text-blue-500 font-black tracking-[0.2em] uppercase">Target ID: ${s.id}</div>
+                            </div>
+                        </div>
+                        <div class="bg-[#050505] rounded-2xl p-4 mb-6 border border-white/5 shadow-inner">
+                            <div class="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mb-2">Authenticated Endpoint</div>
+                            <div class="flex items-center gap-3">
+                                <input type="text" value="${s.url}" readonly 
+                                    class="flex-1 bg-transparent text-xs font-mono text-blue-400 outline-none select-all cursor-pointer truncate" 
+                                    onclick="this.select()" />
+                                <button onclick="navigator.clipboard.writeText('${s.url}'); this.innerHTML='<i data-lucide=\'check\'></i>'; lucide.createIcons(); setTimeout(() => {this.innerHTML='<i data-lucide=\'copy\'></i>'; lucide.createIcons();}, 1500)" 
+                                    class="text-slate-600 hover:text-blue-400 transition-all p-1" title="Copy URL">
+                                    <i data-lucide="copy" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <button onclick="pipelineState.scanPredefinedWebsite('${s.id}')"
+                        class="w-full bg-white/5 hover:bg-blue-600 text-white font-black py-4 rounded-2xl text-[11px] uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-3 border border-white/10 hover:border-blue-400 shadow-lg relative z-10 group-hover:-translate-y-1">
+                        <i data-lucide="zap" class="w-4 h-4 text-emerald-400"></i> Engage Kernel Scan
+                    </button>
+                </div>`).join('');
+
+                el.innerHTML = `
+                <div class="flex justify-between items-end mb-10">
+                    <div>
+                        <h3 class="text-3xl font-black text-white tracking-tight italic uppercase underline decoration-blue-500 decoration-2 underline-offset-8 mb-4">Target Registry Center</h3>
+                        <p class="text-slate-500 text-xs font-black tracking-[0.2em] uppercase">Neural-linked scanning endpoints v4.0.2</p>
+                    </div>
+                    <button onclick="pipelineState.executiveScan()" 
+                        class="bg-rose-600 hover:bg-rose-500 text-white font-black uppercase tracking-[0.3em] px-10 py-5 rounded-3xl shadow-[0_20px_50px_rgba(225,29,72,0.3)] hover:shadow-[0_25px_60px_rgba(225,29,72,0.5)] hover:-translate-y-1.5 flex items-center gap-4 transition-all duration-500 border-2 border-rose-400/20">
+                        <i data-lucide="shield-alert" class="w-6 h-6 animate-pulse"></i> RUN EXECUTIVE PROTOCOL
+                    </button>
+                </div>
+                
+                <div class="glass p-12 rounded-[45px] border border-blue-500/20 bg-[#0a0a0f]/80 mb-12 shadow-3xl relative overflow-hidden group">
+                    <div class="absolute -top-32 -right-32 w-80 h-80 bg-blue-600/10 blur-[100px] rounded-full pointer-events-none group-hover:bg-blue-600/20 transition-colors"></div>
+                    <div class="flex items-center gap-8 relative z-10">
+                        <div class="w-24 h-24 rounded-3xl bg-blue-900/40 border border-blue-500/20 flex items-center justify-center shadow-inner">
+                            <i data-lucide="radar" class="w-12 h-12 text-blue-500 animate-[spin_10s_linear_infinite]"></i>
+                        </div>
+                        <div class="flex-1">
+                            <h3 class="text-2xl font-black text-white mb-2 tracking-tight uppercase italic flex items-center gap-3">
+                                Manually Engaged Scanner <span class="text-[10px] text-blue-500 font-black border border-blue-500/40 px-3 py-1 rounded-full not-italic">REAL-TIME TYPING INSTANCE</span>
+                            </h3>
+                            <p class="text-slate-500 text-sm font-medium max-w-2xl leading-relaxed">Supply a custom endpoint URL to redirect the neural heuristic core towards any external or internal target environment.</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-6 mt-10 relative z-10">
+                        <div class="flex-1 flex items-center bg-black/60 border border-white/5 rounded-3xl px-8 focus-within:border-blue-500/50 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all shadow-inner group-hover:border-white/10">
+                            <i data-lucide="anchor" class="w-6 h-6 text-slate-600 mr-4"></i>
+                            <input type="url" id="custom-url-input-registry" placeholder="https://target-endpoint-ip-or-domain.com" class="bg-transparent text-lg font-mono text-white w-full py-6 outline-none">
+                        </div>
+                        <button onclick="pipelineState.scanWebsite(document.getElementById('custom-url-input-registry').value)" 
+                            class="bg-gradient-to-br from-blue-700 to-indigo-800 hover:from-blue-600 hover:to-indigo-700 text-white font-black tracking-[0.3em] px-12 py-6 rounded-3xl shadow-[0_20px_40px_rgba(59,130,246,0.3)] hover:shadow-[0_25px_50px_rgba(59,130,246,0.5)] flex items-center gap-4 transition-all duration-500 shrink-0 hover:-translate-y-2 border border-blue-400/20">
+                            <i data-lucide="zap" class="w-5 h-5 text-emerald-400"></i> ENGAGE KERNEL
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-8">
+                    ${sites || '<div class="col-span-4 text-center py-20 text-slate-500 font-black tracking-[0.2em] text-[10px] uppercase">Awaiting Registry Sync...</div>'}
+                </div>
+            `;
+                lucide.createIcons();
+            },
+        };
+
+        window.onload = () => app.init();
+    </script>
+</body>
+
+</html>
