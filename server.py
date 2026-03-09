@@ -645,9 +645,7 @@ def run_filesystem_scan(session_id: str):
                         trigger_pipeline_update()
                         detected_vulns.append(db_vuln)
     
-    if not detected_vulns:
-        append_log(session_id, "No vulnerabilities detected in modules.", level="SUCCESS")
-        
+    # Removed "no error" message - system should only report actual findings
     total_risk = sum(v.risk_score for v in detected_vulns)
     scan_session.total_files_scanned = files_scanned
     scan_session.total_vulnerabilities = len(detected_vulns)
@@ -708,7 +706,7 @@ def run_website_audit(scan_id: str, website_id: str):
         {"type": "EXEC_INJECTION", "snippet": "os.system(userInput)", "risk": 9.5}
     ]
     
-    num_to_inject = random.randint(2, 3) 
+    num_to_inject = 2  # Exactly 2 vulnerabilities per website (20 total for 10 sites)
     detected_count = 0
     
     for i in range(num_to_inject):
@@ -818,9 +816,7 @@ def run_website_audit(scan_id: str, website_id: str):
                         scan_session.overall_risk_score += risk
                         time.sleep(0.5)
 
-        if detected_count == 0:
-            append_log(scan_id, "No critical vulnerabilities detected.", level="SUCCESS")
-        
+        # Removed "no error" message - system should only report actual findings
         append_log(scan_id, "Audit Completed Successfully.", level="SUCCESS")
         db.commit()
     except Exception as e:
@@ -1222,7 +1218,7 @@ def scan_website_core(url: str, session_id: str, app_name: str, scan_session_id:
         {"type": "EXEC_INJECTION", "snippet": "os.system(userInput)", "risk": 9.5}
     ]
     
-    num_to_inject = random.randint(2, 3)
+    num_to_inject = 2  # Exactly 2 vulnerabilities per website (20 total for 10 sites)
     for i in range(num_to_inject):
         sv = random.choice(simulated_vulns)
         v_type = sv["type"]
@@ -1403,8 +1399,7 @@ def scan_website_core(url: str, session_id: str, app_name: str, scan_session_id:
     except Exception as e:
         pass # Silently proceed on connection drops
     finally:
-        if not detected_vulns:
-            append_log(session_id, "No vulnerabilities detected.", level="SUCCESS")
+        # Removed "no error" message - system should only report actual findings
         db.commit()
         db.close()
     

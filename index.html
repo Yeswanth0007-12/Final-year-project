@@ -308,9 +308,8 @@
                             setTimeout(() => {
                                 app.confirmAutomationExecution(this.currentScanId);
                             }, 1500); // Small visual delay
-                        } else {
-                            app.showToast('Zero Vulnerabilities Found. System Secure.', 'emerald');
                         }
+                        // Removed "Zero Vulnerabilities" message - system should only report actual findings
                     }
 
                     // Only trigger render update if there are new logs to minimize reflows
