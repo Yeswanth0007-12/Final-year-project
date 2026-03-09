@@ -845,8 +845,9 @@
 
             updateProgressBar() {
                 const vulns = pipelineState.vulnerabilities;
-                const total = vulns.filter(v => ['DETECTED', 'FIXED', 'PATCHED', 'VALIDATED'].includes(v.status)).length;
-                const fixed = vulns.filter(v => ['FIXED', 'VALIDATED'].includes(v.status)).length;
+                // Count ALL vulnerabilities regardless of status
+                const total = vulns.length;
+                const fixed = vulns.filter(v => v.status === 'FIXED').length;
 
                 const percent = total > 0 ? Math.round((fixed / total) * 100) : 0;
 
@@ -860,7 +861,7 @@
                 const taskUrl = document.getElementById('pipeline-active-url');
 
                 if (status) {
-                    const activeVuln = vulns.find(v => v.status.includes('PATCH') || v.status.includes('QUEUE'));
+                    const activeVuln = vulns.find(v => ['QUEUED_FOR_PATCH', 'PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(v.status));
                     const isJobActive = !!activeVuln;
 
                     status.className = `text-[11px] font-black px-6 py-2 rounded-full border uppercase tracking-[0.3em] transition-all duration-500 ${isJobActive || pipelineState.queuingActive ? 'border-blue-500 text-blue-400 bg-blue-900/30 shadow-[0_0_30px_rgba(59,130,246,0.4)] animate-pulse' : 'border-slate-800 text-slate-500 bg-slate-900/50'}`;
@@ -877,6 +878,7 @@
                                 'QUEUED_FOR_PATCH': 1,
                                 'PATCH_GENERATING': 2,
                                 'PATCH_APPLIED': 3,
+                                'VALIDATING': 3,
                                 'FIXED': 4,
                                 'FAILED': 4
                             };
@@ -1006,11 +1008,12 @@
                 const tbody = el.querySelector('tbody');
                 if (!tbody) return;
 
-                // Create a hash based on the content that changes (id + status)
-                const stateHash = pipelineState.vulnerabilities.map(v => v.id + '-' + v.status).join('|');
+                // Always show ALL vulnerabilities regardless of status
+                const allVulns = pipelineState.vulnerabilities;
+                const stateHash = allVulns.map(v => v.id + '-' + v.status).join('|');
 
                 if (tbody.getAttribute('data-render-hash') !== stateHash) {
-                    const rows = pipelineState.vulnerabilities.map(v => `
+                    const rows = allVulns.map(v => `
                     <tr class="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
                         <td class="p-6 font-mono text-[11px] text-blue-500 font-bold tracking-wider">${v.id}</td>
                         <td class="p-6">
@@ -1028,8 +1031,9 @@
                             </div>
                         </td>
                         <td class="p-6">
-                            <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${v.status === 'FIXED' || v.status === 'VALIDATED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]' :
-                            v.status.includes('PATCH') ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
+                            <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${v.status === 'FIXED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]' :
+                            ['QUEUED_FOR_PATCH', 'PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(v.status) ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
+                            v.status === 'FAILED' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
                                 'bg-slate-800/40 text-slate-400 border border-white/10'
                         }">
                                 ${v.status.replace(/_/g, ' ')}
@@ -1049,6 +1053,17 @@
                                 <button onclick="app.submitFeedback('${v.id}')" 
                                         class="p-2 rounded-xl bg-white/5 hover:bg-emerald-600 border border-white/10 hover:border-emerald-400 text-slate-400 hover:text-white transition-all shadow-lg group-hover:scale-110">
                                     <i data-lucide="message-square" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+
+                    tbody.innerHTML = rows;
+                    tbody.setAttribute('data-render-hash', stateHash);
+                    lucide.createIcons();
+                }
+            },                                    <i data-lucide="message-square" class="w-4 h-4"></i>
                                 </button>
                             </div>
                         </td>
@@ -1127,7 +1142,9 @@
             },
 
             renderVulns(el) {
-                const rows = pipelineState.vulnerabilities.map(v => `
+                // Show ALL vulnerabilities regardless of status
+                const allVulns = pipelineState.vulnerabilities;
+                const rows = allVulns.map(v => `
                 <tr class="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
                     <td class="p-6 font-mono text-[11px] text-blue-500 font-bold tracking-wider">${v.id}</td>
                     <td class="p-6">
@@ -1145,8 +1162,9 @@
                         </div>
                     </td>
                     <td class="p-6">
-                        <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${v.status === 'FIXED' || v.status === 'VALIDATED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]' :
-                        v.status.includes('PATCH') || v.status === 'VALIDATING' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
+                        <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${v.status === 'FIXED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]' :
+                        ['QUEUED_FOR_PATCH', 'PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(v.status) ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
+                        v.status === 'FAILED' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
                             'bg-slate-800/40 text-slate-400 border border-white/10'
                     }">
                             ${v.status.replace(/_/g, ' ')}
