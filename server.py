@@ -1078,31 +1078,34 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
     
     num_to_inject = random.randint(2, 3) 
     
-    for i in range(num_to_inject):
-        sv = random.choice(simulated_vulns)
-        v_type = sv["type"]
-        snippet = f"{sv['snippet']} // Hash: {random.randint(1000,9999)}"
-        risk = sv["risk"]
-        
-        v_id = f"WEB-{random.randint(10000, 99999)}"
-        remediation = get_remediation_info(v_type, snippet)
-        db_vuln = Vulnerability(
-            id=v_id, scan_session_id=scan_session_id,
-            website_name=app_name, line_number=random.randint(10, 200),
-            vulnerability_type=v_type, severity="HIGH" if risk > 7 else "MEDIUM",
-            code_snippet=snippet, risk_score=risk, url=url,
-            suggested_fix=remediation["suggested_fix"],
-            diff=remediation["diff"],
-            patch_explanation=remediation.get("explanation"),
-            status="DETECTED",
-            updated_at=datetime.datetime.utcnow()
-        )
-        db.add(db_vuln)
-        db.commit()
-        trigger_pipeline_update()
-        found_count += 1
-        append_log(session_id, f"[SCANNER_ENGINE] Vulnerability detected: {app_name} line {db_vuln.line_number}", level="ERROR", log_type="scanner")
-        time.sleep(0.3)
+    try:
+        for i in range(num_to_inject):
+            sv = random.choice(simulated_vulns)
+            v_type = sv["type"]
+            snippet = f"{sv['snippet']} // Hash: {random.randint(1000,9999)}"
+            risk = sv["risk"]
+            
+            v_id = f"WEB-{random.randint(10000, 99999)}"
+            remediation = get_remediation_info(v_type, snippet)
+            db_vuln = Vulnerability(
+                id=v_id, scan_session_id=scan_session_id,
+                website_name=app_name, line_number=random.randint(10, 200),
+                vulnerability_type=v_type, severity="HIGH" if risk > 7 else "MEDIUM",
+                code_snippet=snippet, risk_score=risk, url=url,
+                suggested_fix=remediation["suggested_fix"],
+                diff=remediation["diff"],
+                patch_explanation=remediation.get("explanation"),
+                status="DETECTED",
+                updated_at=datetime.datetime.utcnow()
+            )
+            db.add(db_vuln)
+            db.commit()
+            trigger_pipeline_update()
+            found_count += 1
+            append_log(session_id, f"[SCANNER_ENGINE] Vulnerability detected: {app_name} line {db_vuln.line_number}", level="ERROR", log_type="scanner")
+            time.sleep(0.3)
+    except Exception as e:
+        append_log(session_id, f"[SCANNER_ENGINE] ERROR injecting simulated vulnerabilities: {str(e)}", level="ERROR", log_type="scanner")
 
     try:
         response = requests.get(url, timeout=10)
@@ -1196,10 +1199,13 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
                         time.sleep(0.5)
 
     except Exception as e:
-        pass # Silently proceed on connection drops to not ruin CLI look
+        # Log the actual error instead of silently ignoring it
+        append_log(session_id, f"[SCANNER_ENGINE] WARNING: Scan error for {app_name}: {str(e)}", level="WARNING", log_type="scanner")
     finally:
         if found_count == 0:
-            append_log(session_id, f"[SCANNER_ENGINE] SUCCESS No vulnerabilities found", level="SUCCESS", log_type="scanner")
+            append_log(session_id, f"[SCANNER_ENGINE] No additional vulnerabilities found in live scan", level="INFO", log_type="scanner")
+        else:
+            append_log(session_id, f"[SCANNER_ENGINE] Found {found_count} vulnerabilities in {app_name}", level="SUCCESS", log_type="scanner")
         db.close()
     
     return found_count
