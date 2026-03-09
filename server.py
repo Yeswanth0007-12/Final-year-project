@@ -850,11 +850,8 @@ def scan_website_manual(payload: dict, background_tasks: BackgroundTasks):
 @app.post("/executive-scan")
 def executive_scan(background_tasks: BackgroundTasks):
     """
-    Phase 1: Scan all predefined websites and log errors to Scanner terminal.
-    Requires user confirmation to queue for patching.
+    Executive scan: Scans all websites and automatically starts remediation queue.
     """
-    pipeline_paused_event.set()  # Pause pipeline until confirmed
-    
     session_id = "executive-" + str(uuid.uuid4())[:8]
     with terminal_sessions_lock:
         terminal_sessions[session_id] = {
@@ -863,8 +860,10 @@ def executive_scan(background_tasks: BackgroundTasks):
             "status": "RUNNING", 
             "last_index_scanner": 0,
             "last_index_automation": 0,
-            "found_count": 0  # Initialize to prevent race condition
+            "found_count": 0
         }
+    
+    # Start scan task - it will auto-queue and start automation
     background_tasks.add_task(run_executive_scan_task, session_id)
     
     return {"scan_id": session_id, "status": "RUNNING"}
@@ -872,23 +871,20 @@ def executive_scan(background_tasks: BackgroundTasks):
 @app.post("/confirm-automation/{scan_id}")
 def confirm_automation(scan_id: str):
     """
-    UNIFIED ENDPOINT: Queue detected vulnerabilities and start automation pipeline.
-    This is the single source of truth for automation workflow.
+    Manual trigger endpoint (legacy support).
+    Executive scan now auto-queues, but this endpoint remains for manual workflows.
     """
-    # Validate scan session exists
     if scan_id not in scan_sessions_data:
         raise HTTPException(status_code=404, detail="Scan session not found.")
     
     session = scan_sessions_data[scan_id]
     vuln_ids = session.get("vulnerabilities", [])
     
-    # Validate vulnerabilities exist
     if not vuln_ids:
         raise HTTPException(status_code=404, detail="No vulnerabilities found for this scan.")
     
     db = SessionLocal()
     try:
-        # Clear queue (thread-safe) - prevents duplicates
         while not patch_queue.empty():
             try:
                 patch_queue.get_nowait()
@@ -896,25 +892,22 @@ def confirm_automation(scan_id: str):
                 break
         
         queued_count = 0
-        # Queue vulnerabilities one-by-one with detailed logging
         for i, v_id in enumerate(vuln_ids, 1):
             vuln = db.query(Vulnerability).filter(Vulnerability.id == v_id).first()
             if vuln and vuln.status == "DETECTED":
                 vuln.status = "QUEUED_FOR_PATCH"
                 patch_queue.put({"vuln_id": vuln.id, "scan_id": scan_id, "status": "QUEUED"})
                 queued_count += 1
-                
-                # Log each vulnerability being queued
                 append_log(scan_id, f"[AUTOMATION_KERNEL] ({i}/{len(vuln_ids)}) Queued: {vuln.vulnerability_type} in {vuln.website_name}", log_type="automation")
-                time.sleep(0.1)  # Visual feedback delay
+                time.sleep(0.1)
         
         db.commit()
+        trigger_pipeline_update()
         
         queue_size = patch_queue.qsize()
-        append_log(scan_id, f"[AUTOMATION_KERNEL] Queue initialized with {queue_size} vulnerabilities.", log_type="automation")
-        append_log(scan_id, "[AUTOMATION_KERNEL] Starting remediation pipeline.", log_type="automation")
+        append_log(scan_id, f"[AUTOMATION_KERNEL] Queue initialized with {queue_size} vulnerabilities", log_type="automation")
+        append_log(scan_id, "[AUTOMATION_KERNEL] Starting remediation pipeline...", log_type="automation")
         
-        # Unpause pipeline and start worker
         pipeline_paused_event.clear()
         process_patch_queue()
         
@@ -987,7 +980,7 @@ def get_queue_status():
     }
 
 def run_executive_scan_task(session_id: str):
-    """Step 1: Scans all endpoints and prepares the session for queue confirmation."""
+    """Step 1: Scans all endpoints and automatically queues vulnerabilities for remediation."""
     append_log(session_id, "[SCANNER_ENGINE] Starting Executive Scan", level="INFO", log_type="scanner")
     
     db = SessionLocal()
@@ -1006,11 +999,9 @@ def run_executive_scan_task(session_id: str):
     for site in PREDEFINED_WEBSITES:
         append_log(session_id, f"[SCANNER_ENGINE] Fetching {site['name']}", level="INFO", log_type="scanner")
         try:
-            # We use scan_website_core_scan_only which returns count and stores as DETECTED
             found = scan_website_core_scan_only(site["url"], session_id, site["name"], scan_session.id)
             total_found += found
             
-            # Retrieve the IDs of vulnerabilities found for this site
             site_vulns = db.query(Vulnerability).filter(
                 Vulnerability.scan_session_id == scan_session.id,
                 Vulnerability.website_name == site["name"],
@@ -1026,12 +1017,41 @@ def run_executive_scan_task(session_id: str):
     terminal_sessions[session_id]["found_count"] = total_found
     terminal_sessions[session_id]["status"] = "COMPLETED"
     
-    # Store session data
     scan_sessions_data[session_id] = {
         "scan_id": session_id,
         "vulnerabilities": vuln_ids,
         "queue_ready": True
     }
+    
+    # AUTO-QUEUE VULNERABILITIES IMMEDIATELY
+    if total_found > 0:
+        append_log(session_id, f"[AUTOMATION_KERNEL] Auto-queuing {total_found} vulnerabilities...", log_type="automation")
+        
+        # Clear existing queue
+        while not patch_queue.empty():
+            try:
+                patch_queue.get_nowait()
+            except queue.Empty:
+                break
+        
+        # Queue each vulnerability in order
+        for i, v_id in enumerate(vuln_ids, 1):
+            vuln = db.query(Vulnerability).filter(Vulnerability.id == v_id).first()
+            if vuln and vuln.status == "DETECTED":
+                vuln.status = "QUEUED_FOR_PATCH"
+                patch_queue.put({"vuln_id": vuln.id, "scan_id": session_id, "status": "QUEUED"})
+                append_log(session_id, f"[AUTOMATION_KERNEL] ({i}/{total_found}) Queued: {vuln.vulnerability_type} in {vuln.website_name}", log_type="automation")
+                time.sleep(0.1)
+        
+        db.commit()
+        trigger_pipeline_update()
+        
+        append_log(session_id, f"[AUTOMATION_KERNEL] Queue initialized with {patch_queue.qsize()} vulnerabilities", log_type="automation")
+        append_log(session_id, "[AUTOMATION_KERNEL] Starting remediation pipeline...", log_type="automation")
+        
+        # START AUTOMATION IMMEDIATELY
+        pipeline_paused_event.clear()
+        process_patch_queue()
         
     db.close()
 

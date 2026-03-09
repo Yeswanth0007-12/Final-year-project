@@ -298,18 +298,12 @@
                     const oldStatus = this.scanStatus;
                     this.scanStatus = data.status || 'COMPLETED';
 
-                    // Trigger Auto-Queuing on scan completion
+                    // Scan completion notification (automation starts automatically on backend)
                     if (oldStatus === 'RUNNING' && this.scanStatus === 'COMPLETED' && !this.scanFinishedFlag) {
                         this.scanFinishedFlag = true;
-
                         if (data.found_count > 0) {
-                            app.showToast(`✅ Scan Complete. Auto-queuing ${data.found_count} threats for remediation...`, 'emerald');
-                            // Automatically start the automation queue
-                            setTimeout(() => {
-                                app.confirmAutomationExecution(this.currentScanId);
-                            }, 1500); // Small visual delay
+                            app.showToast(`✅ Scan Complete. Automation pipeline started for ${data.found_count} vulnerabilities`, 'emerald');
                         }
-                        // Removed "Zero Vulnerabilities" message - system should only report actual findings
                     }
 
                     // Only trigger render update if there are new logs to minimize reflows
