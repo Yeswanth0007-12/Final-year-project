@@ -516,7 +516,6 @@
                     lucide.createIcons();
                 } else {
                     // Targeted Dynamic Updates
-                    this.renderAutomationStatus(viewport);
                     if (page === 'dashboard') this.updateDashboardDynamic(viewport);
                     else if (page === 'vulnerabilities') this.updateVulnsDynamic(viewport);
                     else if (page === 'terminal') this.updateTerminalLogs();
@@ -1033,8 +1032,8 @@
                         <td class="p-6">
                             <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${v.status === 'FIXED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]' :
                             ['QUEUED_FOR_PATCH', 'PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(v.status) ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
-                            v.status === 'FAILED' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
-                                'bg-slate-800/40 text-slate-400 border border-white/10'
+                                v.status === 'FAILED' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
+                                    'bg-slate-800/40 text-slate-400 border border-white/10'
                         }">
                                 ${v.status.replace(/_/g, ' ')}
                             </span>
@@ -1059,11 +1058,7 @@
                     </tr>
                 `).join('');
 
-                    tbody.innerHTML = rows;
-                    tbody.setAttribute('data-render-hash', stateHash);
-                    lucide.createIcons();
-                }
-            },
+
 
                     tbody.innerHTML = rows;
                     tbody.setAttribute('data-render-hash', stateHash);
@@ -1160,8 +1155,8 @@
                     <td class="p-6">
                         <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${v.status === 'FIXED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]' :
                         ['QUEUED_FOR_PATCH', 'PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(v.status) ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
-                        v.status === 'FAILED' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
-                            'bg-slate-800/40 text-slate-400 border border-white/10'
+                            v.status === 'FAILED' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
+                                'bg-slate-800/40 text-slate-400 border border-white/10'
                     }">
                             ${v.status.replace(/_/g, ' ')}
                         </span>

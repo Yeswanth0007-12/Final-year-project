@@ -653,6 +653,19 @@ def run_filesystem_scan(session_id: str):
     
     db.commit()
     append_log(session_id, f"Scan session {scan_session.id} finished.", level="SUCCESS")
+    
+    if len(detected_vulns) > 0:
+        append_log(session_id, f"[AUTOMATION_KERNEL] Auto-queuing {len(detected_vulns)} vulnerabilities...", log_type="automation")
+        for v in detected_vulns:
+            v.status = "QUEUED_FOR_PATCH"
+            patch_queue.put({"vuln_id": v.id, "scan_id": session_id, "status": "QUEUED"})
+            append_log(session_id, f"[AUTOMATION_KERNEL] Queued: {v.vulnerability_type} in {v.website_name}", log_type="automation")
+            time.sleep(0.1)
+        db.commit()
+        trigger_pipeline_update()
+        pipeline_paused_event.clear()
+        process_patch_queue()
+        
     db.close()
     terminal_sessions[session_id]["status"] = "COMPLETED"
 
@@ -1067,9 +1080,24 @@ def scan_website_task(url: str, session_id: str, app_name: str):
     try:
         found_count = scan_website_core(url, session_id, app_name, scan_session.id)
         append_log(session_id, "Scan Completed Successfully.", level="SUCCESS")
-        # CRITICAL: Set found_count BEFORE status="COMPLETED"
+        
         terminal_sessions[session_id]["found_count"] = found_count
         terminal_sessions[session_id]["status"] = "COMPLETED"
+        
+        if found_count > 0:
+            db_query = SessionLocal()
+            vulns = db_query.query(Vulnerability).filter(Vulnerability.scan_session_id == scan_session.id, Vulnerability.status == "DETECTED").all()
+            append_log(session_id, f"[AUTOMATION_KERNEL] Auto-queuing {len(vulns)} vulnerabilities...", log_type="automation")
+            for v in vulns:
+                v.status = "QUEUED_FOR_PATCH"
+                patch_queue.put({"vuln_id": v.id, "scan_id": session_id, "status": "QUEUED"})
+            db_query.commit()
+            trigger_pipeline_update()
+            pipeline_paused_event.clear()
+            process_patch_queue()
+            db_query.close()
+            
+
     except Exception as e:
         append_log(session_id, f"Scan failed: {str(e)}", level="ERROR")
         terminal_sessions[session_id]["found_count"] = 0
