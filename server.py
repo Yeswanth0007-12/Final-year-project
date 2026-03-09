@@ -357,15 +357,18 @@ def run_patch_pipeline(job):
             append_log(scan_id, f"[AUTOMATION_KERNEL] ERROR: Vulnerability {vuln_id} not found", level="ERROR", log_type="automation")
             return
         
+        # Log processing start
+        append_log(scan_id, f"[AUTOMATION_KERNEL] Processing vulnerability: {vuln.website_name}", log_type="automation")
+        
         # 1. QUEUED -> GENERATING (Delay: 5s)
-        append_log(scan_id, f"[AUTOMATION_KERNEL] Initializing remediation: {vuln.website_name}", log_type="automation")
+        append_log(scan_id, f"[AUTOMATION_KERNEL] Initializing remediation: {vuln.vulnerability_type}", log_type="automation")
         vuln.status = "PATCH_GENERATING"
         db.commit()
         trigger_pipeline_update()
         time.sleep(5.0) 
         
         # 2. GENERATING -> APPLIED (Delay: 7s)
-        append_log(scan_id, "[AUTOMATION_KERNEL] Generating neural remediation patch...", log_type="automation")
+        append_log(scan_id, "[AUTOMATION_KERNEL] Generating patch", log_type="automation")
         remediation = get_remediation_info(vuln.vulnerability_type, vuln.code_snippet)
         vuln.patch_code = remediation["fixed_code"]
         vuln.diff = remediation["diff"]
@@ -376,14 +379,14 @@ def run_patch_pipeline(job):
         vuln.status = "PATCH_APPLIED"
         db.commit()
         trigger_pipeline_update()
-        append_log(scan_id, "[AUTOMATION_KERNEL] Patch successfully applied to registry", log_type="automation")
+        append_log(scan_id, "[AUTOMATION_KERNEL] Patch applied", log_type="automation")
         
         # 3. APPLIED -> VALIDATING (Delay: 8s)
         time.sleep(8.0)
         vuln.status = "VALIDATING"
         db.commit()
         trigger_pipeline_update()
-        append_log(scan_id, "[AUTOMATION_KERNEL] Starting behavioral validation...", log_type="automation")
+        append_log(scan_id, "[AUTOMATION_KERNEL] Starting validation...", log_type="automation")
         
         # 4. VALIDATING -> FIXED/FAILED (Delay: 5s)
         time.sleep(5.0)
@@ -394,7 +397,7 @@ def run_patch_pipeline(job):
             vuln.status = "FIXED"
             vuln.risk_score = 0.0
             vuln.decision_score = round(random.uniform(0.90, 0.99), 2)
-            append_log(scan_id, f"[AUTOMATION_KERNEL] SUCCESS: Vulnerability resolved (Score: {vuln.decision_score})", level="SUCCESS", log_type="automation")
+            append_log(scan_id, f"[AUTOMATION_KERNEL] Validation successful", level="SUCCESS", log_type="automation")
         else:
             vuln.status = "FAILED"
             append_log(scan_id, f"[AUTOMATION_KERNEL] WARNING: Patch validation failed", level="WARNING", log_type="automation")
@@ -869,6 +872,81 @@ def executive_scan(background_tasks: BackgroundTasks):
     background_tasks.add_task(run_executive_scan_task, session_id)
     
     return {"scan_id": session_id, "status": "RUNNING"}
+
+@app.post("/queue-vulnerabilities/{scan_id}")
+def queue_vulnerabilities(scan_id: str):
+    """
+    Step 1: Queue detected vulnerabilities for automation.
+    User confirms: "X vulnerabilities detected. Do you want to queue them for automation?"
+    """
+    if scan_id not in scan_sessions_data:
+        raise HTTPException(status_code=404, detail="Scan session not found.")
+    
+    session = scan_sessions_data[scan_id]
+    vuln_ids = session.get("vulnerabilities", [])
+    
+    if not vuln_ids:
+        raise HTTPException(status_code=404, detail="No vulnerabilities found for this scan.")
+    
+    db = SessionLocal()
+    try:
+        # Clear queue (thread-safe)
+        while not patch_queue.empty():
+            try:
+                patch_queue.get_nowait()
+            except queue.Empty:
+                break
+        
+        queued_count = 0
+        # Queue vulnerabilities one-by-one with logging
+        for i, v_id in enumerate(vuln_ids, 1):
+            vuln = db.query(Vulnerability).filter(Vulnerability.id == v_id).first()
+            if vuln and vuln.status == "DETECTED":
+                vuln.status = "QUEUED_FOR_PATCH"
+                patch_queue.put({"vuln_id": vuln.id, "scan_id": scan_id, "status": "QUEUED"})
+                queued_count += 1
+                
+                # Log each vulnerability being queued
+                append_log(scan_id, f"[AUTOMATION_KERNEL] ({i}/{len(vuln_ids)}) Queued: {vuln.vulnerability_type} in {vuln.website_name}", log_type="automation")
+                time.sleep(0.1)  # Small delay for visual feedback
+        
+        db.commit()
+        
+        queue_size = patch_queue.qsize()
+        append_log(scan_id, f"[AUTOMATION_KERNEL] Queue initialized with {queue_size} vulnerabilities.", log_type="automation")
+        
+        return {
+            "status": "QUEUED",
+            "queue_size": queue_size,
+            "message": f"{queue_size} vulnerabilities queued for automation"
+        }
+    finally:
+        db.close()
+
+@app.post("/start-automation/{scan_id}")
+def start_automation(scan_id: str):
+    """
+    Step 2: Start automated patch remediation.
+    User confirms: "Queue initialized. Start automated patch remediation?"
+    """
+    if scan_id not in scan_sessions_data:
+        raise HTTPException(status_code=404, detail="Scan session not found.")
+    
+    queue_size = patch_queue.qsize()
+    
+    if queue_size == 0:
+        raise HTTPException(status_code=400, detail="No vulnerabilities in queue. Please queue vulnerabilities first.")
+    
+    # Start automation
+    append_log(scan_id, "[AUTOMATION_KERNEL] Starting remediation pipeline.", log_type="automation")
+    pipeline_paused_event.clear()  # Unpause pipeline
+    process_patch_queue()  # Start worker
+    
+    return {
+        "status": "AUTOMATION_STARTED",
+        "queue_size": queue_size,
+        "message": f"Automated remediation started for {queue_size} vulnerabilities"
+    }
 
 @app.post("/confirm-automation/{scan_id}")
 def confirm_automation(scan_id: str):
