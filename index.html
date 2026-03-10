@@ -648,12 +648,12 @@
                         <div class="p-8 pb-4 text-center">
                             <div class="mb-6 font-mono font-black text-7xl text-rose-500 drop-shadow-[0_0_15px_rgba(244,63,94,0.4)]">${count}</div>
                             <h3 class="text-lg font-black text-white tracking-widest uppercase mb-4">Threats Identified</h3>
-                            <p class="text-slate-400 text-sm mb-8 leading-relaxed">The Neural Kernel has intercepted ${count} structural flaws. Initiate the autonomous remediation flow to dynamically synthesize constraints.</p>
+                            <p class="text-slate-400 text-sm mb-8 leading-relaxed">The Neural Kernel has intercepted ${count} structural flaws. <strong>Can I start?</strong></p>
                             
                             <div class="flex gap-4 mb-4">
                                 <button onclick="document.getElementById('queue-confirm-overlay').remove()" class="flex-1 py-4 rounded-2xl glass text-slate-400 font-black uppercase text-[10px] tracking-[0.2em] hover:text-white transition-all">Dismiss Menu</button>
-                                <button onclick="app.confirmAutomationExecution('${scanId}'); document.getElementById('queue-confirm-overlay').remove()" class="flex-1 py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black uppercase text-[10px] tracking-[0.3em] shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2">
-                                    <i data-lucide="zap" class="w-4 h-4"></i> START AUTOMATION
+                                <button onclick="app.confirmAutomationExecution('${scanId}'); document.getElementById('queue-confirm-overlay').remove()" class="flex-1 py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-black uppercase tracking-[0.3em] shadow-[0_10px_30px_rgba(16,185,129,0.3)] transition-all flex items-center justify-center gap-2">
+                                    <i data-lucide="check" class="w-4 h-4"></i> YES
                                 </button>
                             </div>
                         </div>
