@@ -1575,14 +1575,8 @@ def get_system_core():
     risk_scores = [v.risk_score for v in vulns]
     avg_risk = sum(risk_scores) / len(risk_scores) if risk_scores else 0.0
     
-    # Adding a realistic baseline if totally empty so UI isn't zero
-    if total == 0:
-        total = 142
-        fixed = 142
-        active = 0
-        avg_risk = 0.0
-        
-    accuracy = 99.8 if active == 0 else 98.5
+    # Pure real-time dynamic calculations (no fake data)
+    accuracy = (fixed / total * 100.0) if total > 0 else 100.0
     
     db.close()
     return {
