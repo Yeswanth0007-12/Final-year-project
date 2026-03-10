@@ -771,11 +771,8 @@
             </div>
         </div>
         
-        <!-- Live Trading Graph Container -->
-        <div class="grid grid-cols-3 gap-6 mb-8">
-            <div id="dashboard-trading-graph-total" class="h-48 rounded-3xl border border-rose-500/20 bg-[#000000]/60 relative overflow-hidden shadow-inner group transition-all hover:border-rose-500/50"></div>
-            <div id="dashboard-trading-graph-patching" class="h-48 rounded-3xl border border-blue-500/20 bg-[#000000]/60 relative overflow-hidden shadow-inner group transition-all hover:border-blue-500/50"></div>
-            <div id="dashboard-trading-graph-secured" class="h-48 rounded-3xl border border-emerald-500/20 bg-[#000000]/60 relative overflow-hidden shadow-inner group transition-all hover:border-emerald-500/50"></div>
+        <!-- Orbital Threat Radar -->
+        <div id="dashboard-radar" class="h-[400px] w-full mb-8 rounded-[40px] border border-blue-500/20 bg-[#020617]/80 relative overflow-hidden shadow-[inset_0_0_80px_rgba(0,0,0,0.8)] group transition-all hover:border-blue-500/50 flex items-center justify-center">
         </div>
                     <!-- Active Indicators -->
                     <div class="grid grid-cols-3 gap-6 relative z-10">
@@ -825,47 +822,77 @@
 
                 this.updateProgressBar();
 
-                // Smoothly redraw to simulate a Trading ticker heartbeat
-                if (el.querySelector('#dashboard-trading-graph-total')) {
-                    this.renderTradingGraph(el.querySelector('#dashboard-trading-graph-total'), 'total', '#f43f5e', 'text-rose-500', 'Total Discovered');
-                    this.renderTradingGraph(el.querySelector('#dashboard-trading-graph-patching'), 'patched', '#3b82f6', 'text-blue-500', 'Active Patching');
-                    this.renderTradingGraph(el.querySelector('#dashboard-trading-graph-secured'), 'validated', '#10b981', 'text-emerald-500', 'Validated Secure');
+                // Smoothly redraw to simulate a Radar Sweep heartbeat
+                if (el.querySelector('#dashboard-radar')) {
+                    this.renderOrbitalRadar(el.querySelector('#dashboard-radar'));
                 }
             },
 
-            renderTradingGraph(container, type, colorHex, colorClass, label) {
-                if (pipelineState.metricsHistory.length < 2) {
-                    container.innerHTML = `<div class="w-full h-full flex flex-col items-center justify-center ${colorClass}/50 uppercase tracking-widest text-[10px] font-black"><i data-lucide="bar-chart-2" class="w-6 h-6 mb-3 animate-pulse"></i> Awaiting Data...</div>`;
-                    lucide.createIcons();
-                    return;
-                }
+            renderOrbitalRadar(container) {
+                const s = pipelineState.metrics;
+                const secured = s.validated || 0;
 
-                const history = pipelineState.metricsHistory;
-                const maxVal = Math.max(10, ...history.map(h => h[type] || 0));
-
-                const points = history.map((h, i) => `${(i / (Math.max(1, history.length - 1))) * 100},${100 - ((h[type] || 0) / maxVal) * 100}`).join(' ');
-
-                const lastPoint = history[history.length - 1] || {};
-                const currentY = 100 - ((lastPoint[type] || 0) / maxVal) * 100;
-                const currentValue = lastPoint[type] || 0;
+                // We'll generate dynamic "points" (blips) based on vulnerabilities
+                const blips = (pipelineState.vulnerabilities || []).slice(0, 40).map((v, i) => {
+                    const angle = (i * 37) * (Math.PI / 180); // Spread them out
+                    const distance = Math.max(10, 45 - (v.risk_score || 5) * 3); // Higher risk = closer to center (10-45 radius)
+                    const x = 50 + distance * Math.cos(angle);
+                    const y = 50 + distance * Math.sin(angle);
+                    const isFixed = v.status === 'FIXED';
+                    const color = isFixed ? '#10b981' : (v.status === 'QUEUED_FOR_PATCH' || v.status.includes('PATCH') ? '#3b82f6' : '#f43f5e');
+                    return `<circle cx="${x}" cy="${y}" r="1.5" fill="${color}" class="${isFixed ? '' : 'animate-ping'}" style="filter: drop-shadow(0 0 5px ${color}); animation-duration: ${1 + (i % 3) * 0.5}s;"></circle>
+                            <circle cx="${x}" cy="${y}" r="0.8" fill="#fff"></circle>`;
+                }).join('');
 
                 container.innerHTML = `
-        <div class="absolute top-5 left-6 text-[10px] font-black ${colorClass} tracking-widest uppercase z-10 flex items-center gap-2">
-            <div class="w-2 h-2 rounded-full" style="background-color: ${colorHex}; box-shadow: 0 0 10px ${colorHex}"></div>
-            ${label}
-        </div>
-        <div class="absolute bottom-5 left-6 text-4xl font-black ${colorClass} tracking-tighter shadow-sm z-10 drop-shadow-[0_0_15px_${colorHex}40]">${currentValue}</div>
-        <svg viewBox="0 -10 100 120" preserveAspectRatio="none" class="absolute inset-0 w-full h-full overflow-visible opacity-70 mt-6 pointer-events-none">
-            <!-- Grid lines -->
-            <path d="M0,33 L100,33 M0,66 L100,66 M0,100 L100,100" stroke="rgba(255,255,255,0.03)" stroke-width="0.2" fill="none" />
-            
-            <!-- Dynamic Line -->
-            <polyline points="${points}" fill="none" stroke="${colorHex}" stroke-width="2.5" stroke-linejoin="round" style="filter: drop-shadow(0 0 8px ${colorHex}80);" />
-            
-            <!-- Current Pulse Point -->
-            <circle cx="100" cy="${currentY}" r="3" fill="${colorHex}" class="animate-pulse" style="filter: drop-shadow(0 0 10px ${colorHex});" />
-        </svg>
-    `;
+                    <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-10 mix-blend-overlay"></div>
+                    
+                    <div class="absolute top-8 left-10 flex flex-col gap-1 z-10">
+                        <div class="text-[10px] font-black text-blue-500 tracking-[0.4em] uppercase flex items-center gap-3">
+                            <div class="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.8)] animate-pulse"></div> 
+                            Global Attack Surface Radar
+                        </div>
+                        <div class="text-5xl font-black text-white tracking-tighter drop-shadow-md mt-2">
+                            ${(pipelineState.vulnerabilities || []).length} <span class="text-[11px] text-slate-500 uppercase tracking-widest font-bold ml-1">Live Vectors</span>
+                        </div>
+                    </div>
+                    
+                    <div class="absolute bottom-10 right-10 flex flex-col items-end gap-1 z-10 text-right">
+                        <div class="text-[10px] font-black text-emerald-500/70 tracking-[0.3em] uppercase">Neutralized Threats</div>
+                        <div class="text-4xl font-black text-emerald-500 tracking-tighter drop-shadow-[0_0_15px_rgba(16,185,129,0.3)]">${secured}</div>
+                    </div>
+
+                    <svg viewBox="0 0 100 100" class="w-full h-full max-w-[500px] relative z-0 overflow-visible mt-4">
+                        <!-- Radar Circles -->
+                        <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(59,130,246,0.05)" stroke-width="0.3" stroke-dasharray="1 3" />
+                        <circle cx="50" cy="50" r="35" fill="none" stroke="rgba(59,130,246,0.15)" stroke-width="0.3" />
+                        <circle cx="50" cy="50" r="25" fill="none" stroke="rgba(59,130,246,0.2)" stroke-width="0.3" stroke-dasharray="2 2" />
+                        <circle cx="50" cy="50" r="12" fill="rgba(244,63,94,0.05)" stroke="rgba(244,63,94,0.3)" stroke-width="0.5" />
+                        
+                        <!-- Axis Lines -->
+                        <line x1="50" y1="2" x2="50" y2="98" stroke="rgba(59,130,246,0.1)" stroke-width="0.2" />
+                        <line x1="2" y1="50" x2="98" y2="50" stroke="rgba(59,130,246,0.1)" stroke-width="0.2" />
+                        
+                        <!-- Crosshairs -->
+                        <path d="M48,50 L52,50 M50,48 L50,52" stroke="#3b82f6" stroke-width="0.5" />
+                        
+                        <!-- Sweeper -->
+                        <path d="M50,50 L50,5 A45,45 0 0,1 95,50 Z" fill="url(#radar-sweep)">
+                            <animateTransform attributeName="transform" type="rotate" from="0 50 50" to="360 50 50" dur="3s" repeatCount="indefinite" />
+                        </path>
+
+                        <!-- Gradient Definition -->
+                        <defs>
+                            <linearGradient id="radar-sweep" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="rgba(59,130,246,0.4)" stop-opacity="0.8" />
+                                <stop offset="100%" stop-color="rgba(59,130,246,0)" stop-opacity="0" />
+                            </linearGradient>
+                        </defs>
+
+                        <!-- Data Blips -->
+                        ${blips}
+                    </svg>
+                `;
             },
 
             updateProgressBar() {

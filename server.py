@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import create_engine, Column, Integer, String, Text, Float, DateTime, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -1469,11 +1470,8 @@ def get_terminal_stream(session_id: str, last_scanner_index: int = 0, last_autom
 @app.get("/vulnerabilities")
 def get_vulnerabilities():
     db = SessionLocal()
-    # Return all vulnerabilities including automated statuses
     vulns = db.query(Vulnerability).all()
-    res = [dict(v.__dict__) for v in vulns]  
-    for r in res:
-        r.pop('_sa_instance_state', None)
+    res = jsonable_encoder(vulns)
     db.close()
     return res
 
