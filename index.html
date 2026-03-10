@@ -391,6 +391,10 @@
                     const data = await res.json();
                     this.currentScanId = data.scan_id;
                     this.scanStatus = 'RUNNING';
+                    this.lastScannerIndex = 0;
+                    this.lastAutomationIndex = 0;
+                    this.scannerLogs = [];
+                    this.automationLogs = [];
                     this.scanFinishedFlag = false; // Reset flag for popup
                     // Always go to terminal Scanner Logic tab
                     app.terminalMode = 'scan';

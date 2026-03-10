@@ -347,14 +347,15 @@ def run_patch_pipeline(job):
         
         # Dynamic wait time based on queue size to hit ~15s total
         total_queued = max(1, patch_queue.qsize() + 1)
-        base_delay = max(0.2, 12.0 / total_queued) # 12 seconds total distributed
+        base_delay = max(0.2, 15.0 / total_queued) # distribute 15 seconds across queue items
+        step_delay = base_delay * 0.25 # 4 steps per vulnerability
         
         # 1. QUEUED -> GENERATING 
         append_log(scan_id, f"[AUTOMATION_KERNEL] Initializing remediation: {vuln.vulnerability_type}", log_type="automation")
         vuln.status = "PATCH_GENERATING"
         db.commit()
         trigger_pipeline_update()
-        time.sleep(base_delay * 0.25) 
+        time.sleep(step_delay) 
         
         # 2. GENERATING -> APPLIED
         append_log(scan_id, "[AUTOMATION_KERNEL] Generating patch", log_type="automation")
@@ -364,21 +365,21 @@ def run_patch_pipeline(job):
         vuln.suggested_fix = remediation["suggested_fix"]
         vuln.patch_explanation = remediation["explanation"]
         
-        time.sleep(base_delay * 0.25)
+        time.sleep(step_delay)
         vuln.status = "PATCH_APPLIED"
         db.commit()
         trigger_pipeline_update()
         append_log(scan_id, "[AUTOMATION_KERNEL] Patch applied", log_type="automation")
         
         # 3. APPLIED -> VALIDATING 
-        time.sleep(base_delay * 0.25)
+        time.sleep(step_delay)
         vuln.status = "VALIDATING"
         db.commit()
         trigger_pipeline_update()
         append_log(scan_id, "[AUTOMATION_KERNEL] Starting validation...", log_type="automation")
         
         # 4. VALIDATING -> FIXED/FAILED 
-        time.sleep(base_delay * 0.25)
+        time.sleep(step_delay)
         is_fixed = validate_patch_logic(vuln.vulnerability_type, vuln.patch_code)
         vuln.patch_attempts += 1
         
