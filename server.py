@@ -931,7 +931,64 @@ def get_queue_status():
         "pending_jobs": scan_queue
     }
 
-# DELETED legacy auto-queuing run_executive_scan_task
+def run_executive_scan_task(scan_id: str):
+    append_log(scan_id, "[SYSTEM] Initiating Executive System Scan...", log_type="scanner")
+    db = SessionLocal()
+    scan_session = ScanSession(total_files_scanned=len(PREDEFINED_WEBSITES), total_vulnerabilities=0, overall_risk_score=0)
+    db.add(scan_session)
+    db.commit()
+    db.refresh(scan_session)
+    
+    total_found = 0
+    try:
+        for site in PREDEFINED_WEBSITES:
+            append_log(scan_id, f"[SCANNER_ENGINE] Auditing target Node {site['name']} at {site['url']}", log_type="scanner")
+            found = scan_website_core_scan_only(site["url"], scan_id, site["name"], scan_session.id)
+            total_found += found
+        
+        terminal_sessions[scan_id]["found_count"] = total_found
+        terminal_sessions[scan_id]["status"] = "COMPLETED"
+        append_log(scan_id, f"[SYSTEM] Executive Scan Complete. {total_found} vulnerabilities localized.", level="SUCCESS", log_type="scanner")
+        
+        if total_found > 0:
+            db_query = SessionLocal()
+            vulns = db_query.query(Vulnerability).filter(Vulnerability.scan_session_id == scan_session.id, Vulnerability.status == "DETECTED").all()
+            vuln_ids = [v.id for v in vulns]
+            db_query.close()
+            
+            append_log(scan_id, f"[AUTOMATION_KERNEL] Auto-queuing {total_found} vulnerabilities for Remediation Pipeline...", log_type="automation")
+            
+            # Clear existing queue
+            while not patch_queue.empty():
+                try:
+                    patch_queue.get_nowait()
+                except queue.Empty:
+                    break
+                    
+            db_add = SessionLocal()
+            for i, v_id in enumerate(vuln_ids, 1):
+                vuln = db_add.query(Vulnerability).filter(Vulnerability.id == v_id).first()
+                if vuln and vuln.status == "DETECTED":
+                    vuln.status = "QUEUED_FOR_PATCH"
+                    patch_queue.put({"vuln_id": vuln.id, "scan_id": scan_id, "status": "QUEUED"})
+                    append_log(scan_id, f"[AUTOMATION_KERNEL] ({i}/{total_found}) Queued: {vuln.vulnerability_type} in {vuln.website_name}", log_type="automation")
+                    time.sleep(0.05)
+            db_add.commit()
+            db_add.close()
+            trigger_pipeline_update()
+            
+            append_log(scan_id, f"[AUTOMATION_KERNEL] Queue initialized with {patch_queue.qsize()} vulnerabilities.", log_type="automation")
+            append_log(scan_id, "[AUTOMATION_KERNEL] Starting remediation pipeline worker thread...", log_type="automation")
+            
+            pipeline_paused_event.clear()
+            process_patch_queue()
+        else:
+            append_log(scan_id, "[SYSTEM] Enterprise network secure. Zero vulnerabilities detected.", log_type="automation")
+    except Exception as e:
+        append_log(scan_id, f"[ERROR] Executive scan failed: {str(e)}", level="ERROR", log_type="scanner")
+    finally:
+        db.close()
+        terminal_sessions[scan_id]["status"] = "COMPLETED"
 
 
 def scan_website_task(url: str, session_id: str, app_name: str):
