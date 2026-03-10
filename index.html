@@ -272,6 +272,10 @@
                     // PERSISTENCE: Save state for reload stability
                     localStorage.setItem('seclab_current_scan_id', this.currentScanId);
                     localStorage.setItem('seclab_active_vuln_id', this.activeVulnId);
+                    localStorage.setItem('seclab_terminal_logs', JSON.stringify(this.terminalLogs || []));
+                    localStorage.setItem('seclab_pipeline_logs', JSON.stringify(this.pipelineLogs || []));
+                    localStorage.setItem('seclab_scan_last_index', this.scanLastIndex.toString());
+                    localStorage.setItem('seclab_pipe_last_index', this.pipeLastIndex.toString());
 
                     app.smartUpdate();
                 } catch (e) { console.error("Sync Error", e); }
@@ -400,6 +404,14 @@
                 this.activeVulnId = localStorage.getItem('seclab_active_vuln_id') || null;
                 pipelineState.currentScanId = this.currentScanId;
                 pipelineState.activeVulnId = this.activeVulnId;
+                
+                // Restore logs
+                try {
+                    pipelineState.terminalLogs = JSON.parse(localStorage.getItem('seclab_terminal_logs') || '[]');
+                    pipelineState.pipelineLogs = JSON.parse(localStorage.getItem('seclab_pipeline_logs') || '[]');
+                    pipelineState.scanLastIndex = parseInt(localStorage.getItem('seclab_scan_last_index') || '0');
+                    pipelineState.pipeLastIndex = parseInt(localStorage.getItem('seclab_pipe_last_index') || '0');
+                } catch(e) { console.warn("Log restoration failed", e); }
 
                 router.go('dashboard');
                 pipelineState.fetchAll(); // Fetch data immediately
@@ -1000,24 +1012,32 @@
             },
 
             updateTerminalLogs() {
-                const body = document.getElementById('terminal-body');
-                if (!body) return;
+                const terminalBody = document.getElementById('terminal-logs-body');
+                if (!terminalBody) return;
 
-                const logsSource = this.terminalMode === 'scan'
-                    ? (pipelineState.terminalLogs || [])
-                    : (pipelineState.pipelineLogs || []);
+                const logsSource = (router.currentTerminalMode === 'pipeline')
+                    ? pipelineState.pipelineLogs
+                    : pipelineState.terminalLogs;
 
-                // Get only logs we haven't rendered yet
-                const currentRenderedCount = body.getAttribute('data-log-count') ? parseInt(body.getAttribute('data-log-count')) : 0;
+                if (!logsSource || !Array.isArray(logsSource)) return;
 
-                // If scanning restarted / swapped, we clear entirely
-                if (currentRenderedCount > logsSource.length) {
-                    body.innerHTML = '';
-                    body.setAttribute('data-log-count', '0');
+                // Ensure app.renderedLogIndices is initialized for the current mode
+                if (!app.renderedLogIndices) app.renderedLogIndices = {};
+                if (typeof app.renderedLogIndices[router.currentTerminalMode] === 'undefined') {
+                    app.renderedLogIndices[router.currentTerminalMode] = 0;
                 }
 
-                const renderCount = parseInt(body.getAttribute('data-log-count') || '0');
-                const unrenderedLogs = logsSource.slice(renderCount);
+                const currentRenderedCount = app.renderedLogIndices[router.currentTerminalMode];
+
+                // Optimization: only clear if source is actually reset/smaller and session is NOT completed
+                // OR if it's a completely different session.
+                // This prevents clearing logs when switching modes or when a scan completes and then new logs come in for a different mode.
+                if (currentRenderedCount > logsSource.length && pipelineState.scanStatus !== 'COMPLETED') {
+                    terminalBody.innerHTML = '';
+                    app.renderedLogIndices[router.currentTerminalMode] = 0;
+                }
+
+                const unrenderedLogs = logsSource.slice(currentRenderedCount);
 
                 const logsHTML = unrenderedLogs.map(log => {
                     const level = log.level || 'INFO';
@@ -1036,22 +1056,22 @@
 
                 if (logsHTML) {
                     // Remove placeholder if present
-                    if (body.querySelector('.animate-pulse')) {
-                        body.innerHTML = '';
+                    if (terminalBody.querySelector('.animate-pulse')) {
+                        terminalBody.innerHTML = '';
                     }
 
-                    body.insertAdjacentHTML('beforeend', logsHTML);
-                    body.setAttribute('data-log-count', logsSource.length.toString());
-                    body.scrollTop = body.scrollHeight; // Auto-scroll
+                    terminalBody.insertAdjacentHTML('beforeend', logsHTML);
+                    app.renderedLogIndices[router.currentTerminalMode] = logsSource.length; // Update rendered count
+                    terminalBody.scrollTop = terminalBody.scrollHeight; // Auto-scroll
                 } else if (logsSource.length === 0) {
-                    const placeholder = this.terminalMode === 'scan'
+                    const placeholder = router.currentTerminalMode === 'scan'
                         ? '<div class="text-slate-700 animate-pulse font-bold tracking-widest">_ Awaiting scanner directives...</div>'
                         : '<div class="text-slate-700 animate-pulse font-bold tracking-widest">_ Awaiting automation kernel start...</div>';
-                    body.innerHTML = placeholder;
+                    terminalBody.innerHTML = placeholder;
                 }
 
                 // Detect all-done state in pipeline mode and show toast once
-                if (this.terminalMode === 'pipeline' && !this._pipelineDoneToastShown) {
+                if (router.currentTerminalMode === 'pipeline' && !this._pipelineDoneToastShown) {
                     const allDone = pipelineState.vulnerabilities.length > 0 &&
                         pipelineState.vulnerabilities.every(v => v.status === 'FIXED' || v.status === 'VALIDATED' || v.status === 'FAILED');
                     const noPipeline = !pipelineState.activeJob && pipelineState.queue && pipelineState.queue.length === 0;
@@ -1214,7 +1234,7 @@
 
             updateComplianceDynamic(el) {
                 const c = pipelineState.complianceData || {};
-                const stateHash = `${c.total_fixed}|${Object.keys(c.fix_breakdown_by_type || {}).join(',')}|${c.history ? c.history.length : 0}`;
+                const stateHash = `${c.total_fixed}|${Object.keys(c.fix_breakdown_by_type || {}).join(',')}|${c.history ? c.history.length : 0}|${Object.keys(c.severity_breakdown || {}).join(',')}`;
                 if (el.getAttribute('data-render-hash') !== stateHash) {
                     this.renderCompliance(el);
                     el.setAttribute('data-render-hash', stateHash);
@@ -1646,8 +1666,17 @@
             `).join('');
 
                 el.innerHTML = `
-                <div class="grid grid-cols-3 gap-8 mb-10">
+                <div class="grid grid-cols-4 gap-8 mb-10">
                     <div class="glass p-8 rounded-3xl text-center border-l-4 border-emerald-500 relative overflow-hidden shadow-[0_10px_30px_-15px_rgba(16,185,129,0.3)]">
+                        <div class="absolute inset-0 bg-emerald-500/5"></div>
+                        <div class="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Health Score</div>
+                        <div class="text-6xl font-black text-emerald-400 relative z-10 tracking-tighter">${c.compliance_score || 0}<span class="text-xl">%</span></div>
+                    </div>
+                    <div class="glass p-8 rounded-3xl text-center border-l-4 border-blue-500 relative overflow-hidden">
+                        <div class="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Remedy Velocity</div>
+                        <div class="text-6xl font-black text-blue-400 relative z-10 tracking-tighter">${c.remediation_velocity || '0.0s'}</div>
+                    </div>
+                    <div class="glass p-8 rounded-3xl text-center border-l-4 border-emerald-500 relative overflow-hidden shadow-[0_10px_30_rgba(16,185,129,0.3)]">
                         <div class="absolute inset-0 bg-emerald-500/5"></div>
                         <div class="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Total Fixed</div>
                         <div id="compliance-total-fixed" class="text-6xl font-black text-emerald-400 relative z-10 tracking-tighter">${c.total_fixed || 0}</div>
@@ -1657,15 +1686,6 @@
                         <div class="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Open Issues</div>
                         <div class="text-6xl font-black text-rose-500 relative z-10 tracking-tighter">${c.open_count || 0}</div>
                     </div>
-                    <div class="glass p-8 rounded-3xl text-center border-l-4 border-blue-500 relative overflow-hidden shadow-[0_10px_30px_-15px_rgba(59,130,246,0.3)]">
-                        <div class="absolute inset-0 bg-blue-500/5"></div>
-                        <div class="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Closed Issues</div>
-                        <div class="text-6xl font-black text-blue-400 relative z-10 tracking-tighter">${c.closed_count || 0}</div>
-                    </div>
-                </div>
-
-                <!-- NEW COMPLIANCE PANELS -->
-                <div class="grid grid-cols-2 gap-8 mb-10">
                     <!-- OWASP Top 10 Coverage Matrix -->
                     <div class="glass p-8 rounded-3xl border border-white/5 relative overflow-hidden flex flex-col h-[350px]">
                         <div class="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
