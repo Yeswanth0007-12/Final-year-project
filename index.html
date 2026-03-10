@@ -337,103 +337,6 @@
             },
 
 
-
-            async scanWebsite(url) {
-                if (!url) {
-                    alert('Please enter a target URL.');
-                    return;
-                }
-                // Automatically prepend https:// if the user forgets it
-                if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                    url = 'https://' + url;
-                }
-
-                console.log("[ACTION] Custom Website Scan:", url);
-                try {
-                    const res = await fetch(`${API_URL}/scan-website`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ url: url })
-                    });
-                    if (!res.ok) {
-                        const errorText = await res.text();
-                        throw new Error(errorText || `HTTP ${res.status}`);
-                    }
-                    const data = await res.json();
-                    this.currentScanId = data.scan_id;
-                    this.scanStatus = 'RUNNING';
-                    this.scanFinishedFlag = false;
-                    app.terminalMode = 'scan';
-                    router.go('terminal');
-                    this.fetchTerminal();
-                } catch (e) {
-                    console.error("Custom Scan Failed", e);
-                    alert(`Failed to start scan: ${e.message}`);
-                }
-            },
-
-            async scanPredefinedWebsite(id) {
-                console.log("[ACTION] Predefined Scan:", id);
-                try {
-                    const res = await fetch(`${API_URL}/initialize-audit/${id}`, { method: 'POST' });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
-                    this.currentScanId = data.scan_id;
-                    this.scanStatus = 'RUNNING';
-                    this.scanFinishedFlag = false;
-                    app.terminalMode = 'scan';
-                    router.go('terminal');
-                    this.fetchTerminal();
-                } catch (e) {
-                    console.error("Predefined Scan Failed", e);
-                    alert(`Failed to start scan: ${e.message}`);
-                }
-            },
-
-            async executiveScan() {
-                console.log("[ACTION] Executive Scan Started");
-                try {
-                    const res = await fetch(`${API_URL}/executive-scan`, { method: 'POST' });
-                    if (!res.ok) {
-                        const errorText = await res.text();
-                        throw new Error(errorText || `HTTP ${res.status}`);
-                    }
-                    const data = await res.json();
-                    this.currentScanId = data.scan_id;
-                    this.scanStatus = 'RUNNING';
-                    this.lastScannerIndex = 0;
-                    this.lastAutomationIndex = 0;
-                    this.terminalLogs = [];
-                    this.pipelineLogs = [];
-                    this.scanFinishedFlag = false; // Reset flag for popup
-                    // Always go to terminal Scanner Logic tab
-                    app.terminalMode = 'scan';
-                    app.lastPage = null; // Force re-render
-                    router.go('terminal');
-                } catch (e) {
-                    console.error("Executive Scan Failed", e);
-                    alert(`Executive Scan Failed: ${e.message}`);
-                }
-            },
-
-            async executeScan() {
-                console.log("[ACTION] Execute Scan");
-                try {
-                    const res = await fetch(`${API_URL}/scan`, { method: 'POST' });
-                    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-                    const data = await res.json();
-                    this.currentScanId = data.scan_id;
-                    this.scanStatus = 'RUNNING';
-                    this.scanFinishedFlag = false;
-                    app.terminalMode = 'scan';
-                    router.go('terminal');
-                    this.fetchTerminal();
-                } catch (e) {
-                    console.error("Scan Failed:", e);
-                    alert(`Scan failed: ${e.message}`);
-                }
-            },
-
             async generatePatch(id) {
                 try {
                     await fetch(`${API_URL}/patch/${id}`, { method: 'POST' });
@@ -503,6 +406,84 @@
             async executeScan() {
                 document.getElementById('page-title').innerText = "Scanning filesystem...";
                 await pipelineState.executeScan();
+            },
+
+            async scanWebsite(url) {
+                if (!url) {
+                    alert('Please enter a target URL.');
+                    return;
+                }
+                // Automatically prepend https:// if the user forgets it
+                if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                    url = 'https://' + url;
+                }
+
+                console.log("[ACTION] Custom Website Scan:", url);
+                try {
+                    const res = await fetch(`${API_URL}/scan-website`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: url })
+                    });
+                    if (!res.ok) {
+                        const errorText = await res.text();
+                        throw new Error(errorText || `HTTP ${res.status}`);
+                    }
+                    const data = await res.json();
+                    pipelineState.currentScanId = data.scan_id;
+                    pipelineState.scanStatus = 'RUNNING';
+                    pipelineState.scanFinishedFlag = false;
+                    app.terminalMode = 'scan';
+                    router.go('terminal');
+                    pipelineState.fetchTerminal();
+                } catch (e) {
+                    console.error("Custom Scan Failed", e);
+                    alert(`Failed to start scan: ${e.message}`);
+                }
+            },
+
+            async scanPredefinedWebsite(id) {
+                console.log("[ACTION] Predefined Scan:", id);
+                try {
+                    const res = await fetch(`${API_URL}/initialize-audit/${id}`, { method: 'POST' });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+                    pipelineState.currentScanId = data.scan_id;
+                    pipelineState.scanStatus = 'RUNNING';
+                    pipelineState.scanFinishedFlag = false;
+                    app.terminalMode = 'scan';
+                    router.go('terminal');
+                    pipelineState.fetchTerminal();
+                } catch (e) {
+                    console.error("Predefined Scan Failed", e);
+                    alert(`Failed to start scan: ${e.message}`);
+                }
+            },
+
+            async executiveScan() {
+                console.log("[ACTION] Executive Scan Started");
+                try {
+                    const res = await fetch(`${API_URL}/executive-scan`, { method: 'POST' });
+                    if (!res.ok) {
+                        const errorText = await res.text();
+                        throw new Error(errorText || `HTTP ${res.status}`);
+                    }
+                    const data = await res.json();
+                    pipelineState.currentScanId = data.scan_id;
+                    pipelineState.scanStatus = 'RUNNING';
+                    pipelineState.scanLastIndex = 0;
+                    pipelineState.pipeLastIndex = 0;
+                    pipelineState.terminalLogs = [];
+                    pipelineState.pipelineLogs = [];
+                    pipelineState.scanFinishedFlag = false; // Reset flag for popup
+                    // Always go to terminal Scanner Logic tab
+                    app.terminalMode = 'scan';
+                    app.lastPage = null; // Force re-render
+                    router.go('terminal');
+                } catch (e) {
+                    console.error("Executive Scan Failed", e);
+                    alert(`Executive Scan Failed: ${e.message}`);
+                }
             },
 
             async generatePatch(id) {
@@ -1799,7 +1780,7 @@
                             </div>
                         </div>
                     </div>
-                    <button onclick="pipelineState.scanPredefinedWebsite('${s.id}')"
+                    <button onclick="app.scanPredefinedWebsite('${s.id}')"
                         class="w-full bg-white/5 hover:bg-blue-600 text-white font-black py-4 rounded-2xl text-[11px] uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-3 border border-white/10 hover:border-blue-400 shadow-lg relative z-10 group-hover:-translate-y-1">
                         <i data-lucide="zap" class="w-4 h-4 text-emerald-400"></i> Engage Kernel Scan
                     </button>
@@ -1811,7 +1792,7 @@
                         <h3 class="text-3xl font-black text-white tracking-tight italic uppercase underline decoration-blue-500 decoration-2 underline-offset-8 mb-4">Target Registry Center</h3>
                         <p class="text-slate-500 text-xs font-black tracking-[0.2em] uppercase">Neural-linked scanning endpoints v4.0.2</p>
                     </div>
-                    <button onclick="pipelineState.executiveScan()" 
+                    <button onclick="app.executiveScan()" 
                         class="bg-rose-600 hover:bg-rose-500 text-white font-black uppercase tracking-[0.3em] px-10 py-5 rounded-3xl shadow-[0_20px_50px_rgba(225,29,72,0.3)] hover:shadow-[0_25px_60px_rgba(225,29,72,0.5)] hover:-translate-y-1.5 flex items-center gap-4 transition-all duration-500 border-2 border-rose-400/20">
                         <i data-lucide="shield-alert" class="w-6 h-6 animate-pulse"></i> RUN EXECUTIVE PROTOCOL
                     </button>
