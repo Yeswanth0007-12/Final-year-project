@@ -347,14 +347,14 @@ def run_patch_pipeline(job):
         
         # 1. QUEUED_FOR_PATCH already set by initiator
         append_log(scan_id, f"[AUTOMATION_KERNEL] INGESTED: {vuln.vulnerability_type} in {vuln.website_name}", log_type="automation")
-        time.sleep(1.0) # Pacing
+        time.sleep(0.1) # Pacing
 
         # 2. PATCH_GENERATING
         vuln.status = "PATCH_GENERATING"
         db.commit()
         trigger_pipeline_update()
         append_log(scan_id, "[AUTOMATION_KERNEL] Status: PATCH_GENERATING...", log_type="automation")
-        time.sleep(4.0) 
+        time.sleep(0.3) 
 
         # 3. PATCH_APPLIED (Generation complete)
         remediation = get_remediation_info(vuln.vulnerability_type, vuln.code_snippet)
@@ -367,14 +367,14 @@ def run_patch_pipeline(job):
         db.commit()
         trigger_pipeline_update()
         append_log(scan_id, "[AUTOMATION_KERNEL] Status: PATCH_APPLIED", log_type="automation")
-        time.sleep(4.0)
+        time.sleep(0.3)
 
         # 4. VALIDATING
         vuln.status = "VALIDATING"
         db.commit()
         trigger_pipeline_update()
         append_log(scan_id, "[AUTOMATION_KERNEL] Status: VALIDATING...", log_type="automation")
-        time.sleep(4.0)
+        time.sleep(0.3)
         
         # 5. FIXED or FAILED
         is_fixed = validate_patch_logic(vuln.vulnerability_type, vuln.patch_code)
@@ -912,7 +912,7 @@ def run_queuing_task():
             append_log("pipeline", f"[INGEST] ({i+1}/{found_count}) Discovered: {vuln.vulnerability_type} in {vuln.website_name}")
             append_log("pipeline", f"[INGEST]   ↳ Mapping to Neural Core...")
             db.commit() # Commit each one so frontend sees status change
-            time.sleep(1.8) # Loading format cadence
+            time.sleep(0.05) # Loading format cadence
             
         append_log("pipeline", "[SYSTEM] QUEUING_COMPLETE: All detected vulnerabilities are now in the remediation pipeline.", level="SUCCESS")
         
@@ -1045,7 +1045,7 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
             trigger_pipeline_update()
             found_count += 1
             append_log(session_id, f"[SCANNER_ENGINE] Vulnerability detected: {app_name} line {db_vuln.line_number}", level="ERROR", log_type="scanner")
-            time.sleep(0.3)
+            time.sleep(0.05)
     except Exception as e:
         append_log(session_id, f"[SCANNER_ENGINE] ERROR injecting simulated vulnerabilities: {str(e)}", level="ERROR", log_type="scanner")
 
@@ -1104,7 +1104,7 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
                         found_count += 1
                         # Log to scanner terminal
                         append_log(session_id, f"[SCANNER_ENGINE] Vulnerability detected: {app_name} line {line_num+1}", level="ERROR", log_type="scanner")
-                        time.sleep(0.5) # Stream visually fastly
+                        time.sleep(0.05) # Stream visually fastly
         
         # Check forms for SQL injection
         forms = soup.find_all('form')
@@ -1138,7 +1138,7 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
                         trigger_pipeline_update()
                         found_count += 1
                         append_log(session_id, f"[SCANNER_ENGINE] Vulnerability detected: {app_name} line 0", level="ERROR", log_type="scanner")
-                        time.sleep(0.5)
+                        time.sleep(0.05)
 
     except Exception as e:
         # Log the actual error instead of silently ignoring it
@@ -1153,230 +1153,224 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
 def scan_website_core(url: str, session_id: str, app_name: str, scan_session_id: int):
     append_log(session_id, f"Connecting to {app_name}...")
     append_log(session_id, "Fetching HTML content...")
-    # Check if this website has been thoroughly patched recently
-    previous_fixed = db.query(Vulnerability).filter(
-        Vulnerability.website_name == app_name,
-        Vulnerability.status == "FIXED"
-    ).count()
     
-    if previous_fixed >= 2: # Or purely depending on overall status
-        append_log(session_id, f"[SYSTEM] Target domain {app_name} is secure.", level="SUCCESS")
-        append_log(session_id, f"[SYSTEM] Previous structural flaws have been neutralized by Neural Core.", level="SUCCESS")
-        db.close()
-        return 0 # No new bugs to find
+    db = SessionLocal()
+    detected_vulns = []
     
-    # --- ALWAYS INJECT VULNERABILITIES FIRST ---
-    simulated_vulns = [
-        {"type": "EVAL_INJECTION", "snippet": "eval(userInput)", "risk": 10.0},
-        {"type": "DOM_XSS", "snippet": "element.innerHTML = userInput", "risk": 7.5},
-        {"type": "SQL_INJECTION", "snippet": "SELECT * FROM users WHERE name = 'user'", "risk": 8.0},
-        {"type": "EXEC_INJECTION", "snippet": "os.system(userInput)", "risk": 9.5}
-    ]
-    
-    num_to_inject = 2  # Exactly 2 vulnerabilities per website (20 total for 10 sites)
-    for i in range(num_to_inject):
-        sv = random.choice(simulated_vulns)
-        v_type = sv["type"]
-        snippet = f"{sv['snippet']} // Hash: {random.randint(1000,9999)}"
-        risk = sv["risk"]
-        
-        v_id = f"WEB-{random.randint(10000, 99999)}"
-        remediation = get_remediation_info(v_type, snippet)
-        
-        db_vuln = Vulnerability(
-            id=v_id,
-            scan_session_id=scan_session_id, # Link to session
-            website_name=app_name,
-            line_number=random.randint(10, 200),
-            vulnerability_type=v_type,
-            severity="HIGH" if risk > 7 else "MEDIUM",
-            code_snippet=snippet,
-            risk_score=risk,
-            url=url,
-            suggested_fix=remediation["suggested_fix"],
-            diff=remediation["diff"],
-            patch_explanation=remediation.get("explanation"),
-            status="DETECTED",
-            updated_at=datetime.datetime.utcnow()
-        )
-        db.add(db_vuln)
-        db.commit()
-        trigger_pipeline_update()
-        
-        scan_session = db.query(ScanSession).filter(ScanSession.id == scan_session_id).first()
-        if scan_session:
-            scan_session.total_vulnerabilities += 1
-            scan_session.overall_risk_score += risk
-            db.commit()
-
-        detected_vulns.append(db_vuln)
-        append_log(session_id, f"[SCANNER_ENGINE] Vulnerability detected: {app_name} line {db_vuln.line_number}", level="ERROR", log_type="scanner")
-        time.sleep(0.3)
-
     try:
-        response = requests.get(url, timeout=10)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        append_log(session_id, "Parsing script blocks...")
+        # Check if this website has been thoroughly patched recently
+        previous_fixed = db.query(Vulnerability).filter(
+            Vulnerability.website_name == app_name,
+            Vulnerability.status == "FIXED"
+        ).count()
         
-        scripts = soup.find_all('script')
-        for i, script in enumerate(scripts):
-            content = script.string if script.string else ""
-            if not content: continue
+        if previous_fixed >= 2:
+            append_log(session_id, f"[SYSTEM] Target domain {app_name} is secure.", level="SUCCESS")
+            append_log(session_id, f"[SYSTEM] Previous structural flaws have been neutralized by Neural Core.", level="SUCCESS")
+            return 0
+        
+        # --- ALWAYS INJECT VULNERABILITIES FIRST ---
+        simulated_vulns = [
+            {"type": "EVAL_INJECTION", "snippet": "eval(userInput)", "risk": 10.0},
+            {"type": "DOM_XSS", "snippet": "element.innerHTML = userInput", "risk": 7.5},
+            {"type": "SQL_INJECTION", "snippet": "SELECT * FROM users WHERE name = 'user'", "risk": 8.0},
+            {"type": "EXEC_INJECTION", "snippet": "os.system(userInput)", "risk": 9.5}
+        ]
+        
+        num_to_inject = 2  
+        for i in range(num_to_inject):
+            sv = random.choice(simulated_vulns)
+            v_type = sv["type"]
+            snippet = f"{sv['snippet']} // Hash: {random.randint(1000,9999)}"
+            risk = sv["risk"]
             
-            lines = content.split('\n')
-            for line_num, line in enumerate(lines):
-                stripped = line.strip()
-                v_type = None
-                risk = 0.0
+            v_id = f"WEB-{random.randint(10000, 99999)}"
+            remediation = get_remediation_info(v_type, snippet)
+            
+            db_vuln = Vulnerability(
+                id=v_id,
+                scan_session_id=scan_session_id,
+                website_name=app_name,
+                line_number=random.randint(10, 200),
+                vulnerability_type=v_type,
+                severity="HIGH" if risk > 7 else "MEDIUM",
+                code_snippet=snippet,
+                risk_score=risk,
+                url=url,
+                suggested_fix=remediation["suggested_fix"],
+                diff=remediation["diff"],
+                patch_explanation=remediation.get("explanation"),
+                status="DETECTED",
+                updated_at=datetime.datetime.utcnow()
+            )
+            db.add(db_vuln)
+            db.commit()
+            trigger_pipeline_update()
+            
+            scan_session = db.query(ScanSession).filter(ScanSession.id == scan_session_id).first()
+            if scan_session:
+                scan_session.total_vulnerabilities += 1
+                scan_session.overall_risk_score += risk
+                db.commit()
+
+            detected_vulns.append(db_vuln)
+            append_log(session_id, f"[SCANNER_ENGINE] Vulnerability detected: {app_name} line {db_vuln.line_number}", level="ERROR", log_type="scanner")
+            time.sleep(0.05)
+
+        try:
+            response = requests.get(url, timeout=10)
+            soup = BeautifulSoup(response.text, 'html.parser')
+            append_log(session_id, "Parsing script blocks...")
+            
+            scripts = soup.find_all('script')
+            for i, script in enumerate(scripts):
+                content = script.string if script.string else ""
+                if not content: continue
                 
-                if "eval(" in stripped:
-                    v_type = "EVAL_INJECTION"
-                    risk = 10.0
-                elif "innerHTML" in stripped and "=" in stripped:
-                    v_type = "DOM_XSS"
-                    risk = 7.0
-                elif "document.write(" in stripped:
-                    v_type = "DOM_XSS"
-                    risk = 6.0
-                
-                if v_type and v_type in ALLOWED_VULN_TYPES:
-                    # Professional Deduplication: Use pattern + location + content hash
-                    content_hash = hashlib.md5(stripped.encode()).hexdigest()[:8]
+                lines = content.split('\n')
+                for line_num, line in enumerate(lines):
+                    stripped = line.strip()
+                    v_type = None
+                    risk = 0.0
                     
-                    # Phase 2 & 6: Duplicate and FIXED check
-                    existing = db.query(Vulnerability).filter(
-                        Vulnerability.website_name == app_name,
-                        Vulnerability.line_number == line_num + 1,
-                        Vulnerability.vulnerability_type == v_type
-                    ).first()
+                    if "eval(" in stripped:
+                        v_type = "EVAL_INJECTION"
+                        risk = 10.0
+                    elif "innerHTML" in stripped and "=" in stripped:
+                        v_type = "DOM_XSS"
+                        risk = 7.0
+                    elif "document.write(" in stripped:
+                        v_type = "DOM_XSS"
+                        risk = 6.0
                     
-                    is_new = False
-                    if not existing:
-                        # High-Accuracy: Only detect if actually dangerous
-                        if not validate_patch_logic(v_type, stripped):
-                            is_new = True
-                    else:
-                        # Handle existing vulnerabilities
-                        if existing.status == "FIXED":
-                            # Only re-detect if the code is now different AND unsafe
-                            # (prevents re-detecting the fix)
-                            if existing.code_snippet != stripped and not validate_patch_logic(v_type, stripped):
+                    if v_type and v_type in ALLOWED_VULN_TYPES:
+                        existing = db.query(Vulnerability).filter(
+                            Vulnerability.website_name == app_name,
+                            Vulnerability.line_number == line_num + 1,
+                            Vulnerability.vulnerability_type == v_type
+                        ).first()
+                        
+                        is_new = False
+                        if not existing:
+                            if not validate_patch_logic(v_type, stripped):
                                 is_new = True
-                        elif existing.status == "FAILED":
-                            is_new = True
-                        elif existing.status == "DETECTED" and existing.code_snippet != stripped:
-                            # Update snippet if changed but still unsafe
-                            existing.code_snippet = stripped
-                            db.commit()
-                    
-                    if is_new:
-                        append_log(session_id, f"[INFO] Vulnerability detected: {v_type} at line {line_num+1}")
-                        v_id = f"WEB-{random.randint(10000, 99999)}"
-                        remediation = get_remediation_info(v_type, stripped)
-                        db_vuln = Vulnerability(
-                            id=v_id,
-                            scan_session_id=scan_session_id, # Link to session
-                            website_name=app_name,
-                            line_number=line_num + 1,
-                            vulnerability_type=v_type,
-                            severity="HIGH" if risk > 7 else "MEDIUM",
-                            code_snippet=stripped if stripped else f"<{v_type}> detected in script",
-                            risk_score=risk,
-                            url=url,
-                            suggested_fix=remediation["suggested_fix"],
-                            diff=remediation["diff"],
-                            patch_explanation=remediation.get("explanation"),
-                            status="DETECTED",
-                            updated_at=datetime.datetime.utcnow()
-                        )
-                        db.add(db_vuln)
-                        db.commit() # Commit each to trigger queue
-                        trigger_pipeline_update()
+                        else:
+                            if existing.status == "FIXED":
+                                if existing.code_snippet != stripped and not validate_patch_logic(v_type, stripped):
+                                    is_new = True
+                            elif existing.status == "FAILED":
+                                is_new = True
+                            elif existing.status == "DETECTED" and existing.code_snippet != stripped:
+                                existing.code_snippet = stripped
+                                db.commit()
                         
-                        # Update scan session metrics
-                        scan_session = db.query(ScanSession).filter(ScanSession.id == scan_session_id).first()
-                        if scan_session:
-                            scan_session.total_vulnerabilities += 1
-                            scan_session.overall_risk_score += risk
-                            db.commit()
+                        if is_new:
+                            v_id = f"WEB-{random.randint(10000, 99999)}"
+                            remediation = get_remediation_info(v_type, stripped)
+                            db_vuln = Vulnerability(
+                                id=v_id,
+                                scan_session_id=scan_session_id,
+                                website_name=app_name,
+                                line_number=line_num + 1,
+                                vulnerability_type=v_type,
+                                severity="HIGH" if risk > 7 else "MEDIUM",
+                                code_snippet=stripped if stripped else f"<{v_type}> detected in script",
+                                risk_score=risk,
+                                url=url,
+                                suggested_fix=remediation["suggested_fix"],
+                                diff=remediation["diff"],
+                                patch_explanation=remediation.get("explanation"),
+                                status="DETECTED",
+                                updated_at=datetime.datetime.utcnow()
+                            )
+                            db.add(db_vuln)
+                            db.commit() 
+                            trigger_pipeline_update()
+                            
+                            scan_session = db.query(ScanSession).filter(ScanSession.id == scan_session_id).first()
+                            if scan_session:
+                                scan_session.total_vulnerabilities += 1
+                                scan_session.overall_risk_score += risk
+                                db.commit()
 
-                        detected_vulns.append(db_vuln)
-                        append_log(session_id, f"[SCANNER_ENGINE] Vulnerability detected: {app_name} line {line_num+1}", level="ERROR", log_type="scanner")
-                        time.sleep(0.5)
+                            detected_vulns.append(db_vuln)
+                            append_log(session_id, f"[SCANNER_ENGINE] Vulnerability detected: {app_name} line {line_num+1}", level="ERROR", log_type="scanner")
+                            time.sleep(0.05)
 
-        forms = soup.find_all('form')
-        for form in forms:
-            inputs = form.find_all('input')
-            for inp in inputs:
-                if inp.get('type') == 'text' or not inp.get('type'):
-                    v_type = "SQL_INJECTION"
-                    existing = db.query(Vulnerability).filter(
-                        Vulnerability.website_name == app_name,
-                        Vulnerability.vulnerability_type == v_type,
-                        Vulnerability.code_snippet.contains(str(inp)[:50])
-                    ).first()
-                    
-                    if not existing:
-                        append_log(session_id, f"[SCANNER_ENGINE] Vulnerability detected: {app_name} line 0", level="ERROR", log_type="scanner")
-                        v_id = f"WEB-{random.randint(10000, 99999)}"
+            forms = soup.find_all('form')
+            for form in forms:
+                inputs = form.find_all('input')
+                for inp in inputs:
+                    if inp.get('type') == 'text' or not inp.get('type'):
+                        v_type = "SQL_INJECTION"
                         snippet = f"Form input name='{inp.get('name', 'unnamed')}'"
-                        remediation = get_remediation_info(v_type, snippet)
-                        db_vuln = Vulnerability(
-                            id=v_id,
-                            scan_session_id=scan_session_id, # Link to session
-                            website_name=app_name,
-                            line_number=0,
-                            vulnerability_type=v_type,
-                            severity="LOW",
-                            code_snippet=snippet,
-                            risk_score=3.0,
-                            url=url,
-                            suggested_fix=remediation["suggested_fix"],
-                            diff=remediation["diff"],
-                            patch_explanation=remediation.get("explanation"),
-                            status="DETECTED",
-                            updated_at=datetime.datetime.utcnow()
-                        )
-                        db.add(db_vuln)
-                        db.commit()
-                        trigger_pipeline_update()
+                        existing = db.query(Vulnerability).filter(
+                            Vulnerability.website_name == app_name,
+                            Vulnerability.vulnerability_type == v_type,
+                            Vulnerability.code_snippet == snippet
+                        ).first()
                         
-                        # Update scan session metrics
-                        scan_session = db.query(ScanSession).filter(ScanSession.id == scan_session_id).first()
-                        if scan_session:
-                            scan_session.total_vulnerabilities += 1
-                            scan_session.overall_risk_score += 3.0
+                        if not existing:
+                            v_id = f"WEB-{random.randint(10000, 99999)}"
+                            remediation = get_remediation_info(v_type, snippet)
+                            db_vuln = Vulnerability(
+                                id=v_id,
+                                scan_session_id=scan_session_id,
+                                website_name=app_name,
+                                line_number=0,
+                                vulnerability_type=v_type,
+                                severity="LOW",
+                                code_snippet=snippet,
+                                risk_score=3.0,
+                                url=url,
+                                suggested_fix=remediation["suggested_fix"],
+                                diff=remediation["diff"],
+                                patch_explanation=remediation.get("explanation"),
+                                status="DETECTED",
+                                updated_at=datetime.datetime.utcnow()
+                            )
+                            db.add(db_vuln)
                             db.commit()
+                            trigger_pipeline_update()
+                            
+                            scan_session = db.query(ScanSession).filter(ScanSession.id == scan_session_id).first()
+                            if scan_session:
+                                scan_session.total_vulnerabilities += 1
+                                scan_session.overall_risk_score += 3.0
+                                db.commit()
 
-                        detected_vulns.append(db_vuln)
-                        time.sleep(0.5)
+                            detected_vulns.append(db_vuln)
+                            append_log(session_id, f"[SCANNER_ENGINE] Vulnerability detected: {app_name} line 0", level="ERROR", log_type="scanner")
+                            time.sleep(0.05)
 
-    except Exception as e:
-        pass # Silently proceed on connection drops
+        except Exception as e:
+            append_log(session_id, f"Scan error for {app_name}: {str(e)}", level="WARNING")
+        finally:
+            db.commit()
+            
     finally:
-        # Removed "no error" message - system should only report actual findings
-        db.commit()
         db.close()
     
     return len(detected_vulns)
 
 # Removed legacy log formatters
 
-@app.get("/terminal-stream")
-def get_terminal_stream(session_id: str = "default", last_scanner_index: int = 0, last_automation_index: int = 0):
-    """Step 3: Real-time log streaming for both Scanner and Automation terminals."""
+@app.get("/terminal-stream/{scan_id}")
+def get_terminal_stream(scan_id: str, last_scanner_index: int = 0, last_automation_index: int = 0):
+    """Real-time log streaming for both Scanner and Automation terminals."""
     # Ensure session exists or return empty
-    if session_id not in terminal_sessions:
+    if scan_id not in terminal_sessions:
         # Create a placeholder if it's the global pipeline
-        if session_id == "pipeline":
-            terminal_sessions["pipeline"] = {
-                "scanner_logs": [], 
-                "automation_logs": [], 
-                "status": "IDLE", 
-                "last_index_scanner": 0,
-                "last_index_automation": 0,
-                "found_count": 0
-            }
+        if scan_id == "pipeline":
+            with terminal_sessions_lock:
+                terminal_sessions["pipeline"] = {
+                    "scanner_logs": [], 
+                    "automation_logs": [], 
+                    "status": "IDLE", 
+                    "last_index_scanner": 0,
+                    "last_index_automation": 0,
+                    "found_count": 0
+                }
         else:
             return {
                 "new_scanner_logs": [],
@@ -1384,26 +1378,28 @@ def get_terminal_stream(session_id: str = "default", last_scanner_index: int = 0
                 "last_scanner_index": last_scanner_index,
                 "last_automation_index": last_automation_index,
                 "status": "COMPLETED",
-                "found_count": 0
+                "found_count": 0,
+                "scan_id": scan_id
             }
 
-    session = terminal_sessions[session_id]
-    
-    scanner_logs = session.get("scanner_logs", [])
-    automation_logs = session.get("automation_logs", [])
-    
-    new_scanner = scanner_logs[last_scanner_index:]
-    new_automation = automation_logs[last_automation_index:]
-    
-    return {
-        "new_scanner_logs": new_scanner,
-        "new_automation_logs": new_automation,
-        "last_scanner_index": last_scanner_index + len(new_scanner),
-        "last_automation_index": last_automation_index + len(new_automation),
-        "status": session.get("status", "RUNNING"),
-        "found_count": session.get("found_count", 0),
-        "scan_id": session_id
-    }
+    with terminal_sessions_lock:
+        session = terminal_sessions[scan_id]
+        
+        scanner_logs = session.get("scanner_logs", [])
+        automation_logs = session.get("automation_logs", [])
+        
+        new_scanner = scanner_logs[last_scanner_index:]
+        new_automation = automation_logs[last_automation_index:]
+        
+        return {
+            "new_scanner_logs": new_scanner,
+            "new_automation_logs": new_automation,
+            "last_scanner_index": last_scanner_index + len(new_scanner),
+            "last_automation_index": last_automation_index + len(new_automation),
+            "status": session.get("status", "RUNNING"),
+            "found_count": session.get("found_count", 0),
+            "scan_id": scan_id
+        }
 
 @app.get("/vulnerabilities")
 def get_vulnerabilities():
@@ -1622,7 +1618,7 @@ def run_executive_scan_task(session_id: str):
     vuln_ids = []
     
     append_log(session_id, f"[SCANNER_ENGINE] Targeting {len(PREDEFINED_WEBSITES)} registries...", log_type="scanner")
-    time.sleep(1.0)
+    time.sleep(0.1)
 
     for i, site in enumerate(PREDEFINED_WEBSITES, 1):
         append_log(session_id, f"[SCANNER_ENGINE] ({i}/{len(PREDEFINED_WEBSITES)}) Analyzing: {site['name']}...", log_type="scanner")
@@ -1656,8 +1652,12 @@ def run_executive_scan_task(session_id: str):
     terminal_sessions[session_id]["found_count"] = total_found
     terminal_sessions[session_id]["status"] = "COMPLETED"
     
+    # REQUIRED: log exact initialization message
+    append_log(session_id, f"[AUTOMATION_KERNEL] Queue initialized with {len(vuln_ids)} vulnerabilities", log_type="automation")
+    
     # Ensure the worker is running if items were added
     if not patch_queue.empty():
+        pipeline_paused_event.clear()
         process_patch_queue()
     
     db.close()
@@ -1676,47 +1676,43 @@ def approve_queue(session_id: str, background_tasks: BackgroundTasks):
     
     return {"status": "Queue processing started"}
 
-def process_approved_queue(session_id: str, vuln_ids: list):
+def process_approved_queue(session_id: str, vuln_ids: list = None):
     db = SessionLocal()
+    
+    # If no specific IDs provided, fetch all DETECTED vulnerabilities
+    if vuln_ids is None:
+        detected = db.query(Vulnerability).filter(Vulnerability.status == "DETECTED").all()
+        vuln_ids = [v.id for v in detected]
+        
     total_found = len(vuln_ids)
     
     append_log(session_id, f"[AUTOMATION_KERNEL] Authorization received. Initiating auto-queuing...", log_type="automation")
     
-    # Clear existing queue
+    # Clear existing queue (thread-safe)
     while not patch_queue.empty():
         try:
             patch_queue.get_nowait()
         except queue.Empty:
             break
             
-    # Calculate queue delays to hit the 15-20 second mark exactly
-    # We have N vulnerabilities. Let's make queuing fast (0.1s each) 
-    # and patch generation/evaluation controlled.
-    
     for i, v_id in enumerate(vuln_ids, 1):
         vuln = db.query(Vulnerability).filter(Vulnerability.id == v_id).first()
         if vuln and vuln.status == "DETECTED":
             vuln.status = "QUEUED_FOR_PATCH"
             patch_queue.put({"vuln_id": vuln.id, "scan_id": session_id, "status": "QUEUED"})
             append_log(session_id, f"[AUTOMATION_KERNEL] ({i}/{total_found}) Queued: {vuln.vulnerability_type} in {vuln.website_name}", log_type="automation")
-            time.sleep(0.05) # Very fast queuing
+            time.sleep(0.05) 
             
     db.commit()
     trigger_pipeline_update()
     
-    append_log(session_id, f"[AUTOMATION_KERNEL] Queue initialized with {patch_queue.qsize()} vulnerabilities", log_type="automation")
-    append_log(session_id, "[AUTOMATION_KERNEL] Starting rapid remediation pipeline...", log_type="automation")
+    append_log(session_id, f"[AUTOMATION_KERNEL] Queue initialized with {total_found} vulnerabilities", log_type="automation")
+    append_log(session_id, "[AUTOMATION_KERNEL] Starting remediation pipeline...", log_type="automation")
     
     # START AUTOMATION IMMEDIATELY
     pipeline_paused_event.clear()
     
-    # Calculate exact sleep inside processing loop based on queue size
-    # We want processing to take roughly 15-20 seconds total
-    # Adjust delays dynamically later based on size, but for now logic is in `process_patch_queue`
-    
     terminal_sessions[session_id]["status"] = "COMPLETED"
-    
-    # We call run here, but wait times inside the patch loop will handle pacing
     process_patch_queue()
     db.close()
 
