@@ -311,10 +311,16 @@
                         }
                     }
 
-                    if (oldStatus === 'RUNNING' && this.scanStatus === 'AWAITING_APPROVAL' && !this.scanFinishedFlag) {
-                        this.scanFinishedFlag = true;
-                        if (data.found_count > 0) {
-                            app.showQueueConfirmPopup(data.scan_id || this.currentScanId, data.found_count);
+                    if (this.scanStatus === 'AWAITING_APPROVAL' && !this.scanFinishedFlag) {
+                        this.scanFinishedFlag = true; // Prevent multiple popups
+
+                        // Use either the explicit returned count or calculate from our array
+                        const fCount = data.found_count || pipelineState.vulnerabilities.length || 0;
+                        if (fCount > 0) {
+                            app.showQueueConfirmPopup(data.scan_id || this.currentScanId, fCount);
+                        } else {
+                            // Fallback if somehow 0 are found but it still awaits approval
+                            app.showToast(`✅ Scan Complete. No actionable vulnerabilities found.`, 'emerald');
                         }
                     }
 
