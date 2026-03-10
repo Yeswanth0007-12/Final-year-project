@@ -234,13 +234,14 @@
 
             async fetchAll() {
                 try {
-                    const [vulns, dash, comp, core, sites, pipe] = await Promise.all([
+                    const [vulns, dash, comp, core, sites, pipe, feedbackRes] = await Promise.all([
                         fetch(`${API_URL}/vulnerabilities`).then(r => r.ok ? r.json() : this.vulnerabilities),
                         fetch(`${API_URL}/dashboard`).then(r => r.ok ? r.json() : this.metrics),
                         fetch(`${API_URL}/compliance`).then(r => r.ok ? r.json() : this.complianceData),
                         fetch(`${API_URL}/system-core`).then(r => r.ok ? r.json() : this.systemCore),
                         fetch(`${API_URL}/available-websites`).then(r => r.ok ? r.json() : { websites: this.availableWebsites }),
-                        fetch(`${API_URL}/pipeline/status`).then(r => r.ok ? r.json() : { paused: this.paused, active: this.activeJob, queuing_active: this.queuingActive, queue: this.queue })
+                        fetch(`${API_URL}/pipeline/status`).then(r => r.ok ? r.json() : { paused: this.paused, active: this.activeJob, queuing_active: this.queuingActive, queue: this.queue }),
+                        fetch(`${API_URL}/feedback`).then(r => r.ok ? r.json() : this.feedbackData)
                     ]);
 
                     this.vulnerabilities = (vulns && Array.isArray(vulns)) ? vulns : (Array.isArray(this.vulnerabilities) ? this.vulnerabilities : []);
@@ -250,6 +251,7 @@
                         if (this.metricsHistory.length > 50) this.metricsHistory.shift();
                     }
                     this.complianceData = comp || this.complianceData;
+                    this.feedbackData = feedbackRes || this.feedbackData;
                     this.systemCore = core || this.systemCore;
                     this.availableWebsites = sites.websites || this.availableWebsites || [];
 
@@ -289,7 +291,7 @@
                     const scanIndex = this.scanLastIndex || 0;
                     const autoIndex = this.pipeLastIndex || 0;
 
-                    const res = await fetch(`${API_URL}/terminal-stream?session_id=${this.currentScanId}&last_scanner_index=${scanIndex}&last_automation_index=${autoIndex}`);
+                    const res = await fetch(`${API_URL}/terminal-stream/${this.currentScanId}?last_scanner_index=${scanIndex}&last_automation_index=${autoIndex}`);
                     if (!res.ok) return; // Prevent parsing errors on DB lock (500)
                     const data = await res.json();
 
