@@ -223,6 +223,9 @@
             complianceData: {},
             feedbackData: {},
             terminalLogs: [],
+            pipelineLogs: [], // Initialized for Automation Kernel
+            scanLastIndex: 0, // Initialized for Delta Sync
+            pipeLastIndex: 0, // Initialized for Delta Sync
             availableWebsites: [],
             currentScanId: 'default',
             scanStatus: 'COMPLETED',
@@ -486,6 +489,7 @@
 
             init() {
                 router.go('dashboard');
+                pipelineState.fetchAll(); // Fetch data immediately
                 pipelineState.fetchWebsites();
                 // Start live sync - ULTRA FAST 500ms polling for dynamic live-feed
                 setInterval(() => {
@@ -1135,38 +1139,30 @@
             },
 
             updateWebsiteScannerDynamic(el) {
-                const container = el.querySelector('.grid.grid-cols-2.gap-8.mt-12');
-                if (!container) return;
+                // Keep the "Executive Scan" button in sync with engine status
+                const btn = document.querySelector('button[onclick*="executiveScan"]');
+                if (btn) {
+                    const isScanning = pipelineState.scanStatus === 'RUNNING';
+                    if (isScanning) {
+                        btn.innerHTML = '<i data-lucide="refresh-cw" class="w-6 h-6 animate-spin"></i> SCANNING IN PROGRESS...';
+                        btn.disabled = true;
+                        btn.classList.add('opacity-50', 'animate-pulse');
+                    } else {
+                        btn.innerHTML = '<i data-lucide="shield-alert" class="w-6 h-6 animate-pulse"></i> RUN EXECUTIVE PROTOCOL';
+                        btn.disabled = false;
+                        btn.classList.remove('opacity-50', 'animate-pulse');
+                        lucide.createIcons();
+                    }
+                }
 
-                const sites = pipelineState.availableWebsites.map(s => `
-                <div class="glass p-8 rounded-[30px] border border-white/5 hover:border-blue-500/30 transition-all flex flex-col justify-between group bg-black/40 relative overflow-hidden">
-                    <div class="absolute inset-0 bg-gradient-to-br from-blue-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                    <div class="relative z-10">
-                        <div class="flex items-center gap-4 mb-6">
-                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-black border border-white/10 flex items-center justify-center text-blue-400 shadow-lg group-hover:scale-110 transition-transform">
-                                <i data-lucide="globe" class="w-7 h-7"></i>
-                            </div>
-                            <div>
-                                <h4 class="text-white font-black leading-tight text-lg tracking-tight italic uppercase">${s.name}</h4>
-                                <div class="text-[9px] text-blue-500 font-black tracking-[0.2em] uppercase">Target ID: ${s.id}</div>
-                            </div>
-                        </div>
-                        <div class="bg-[#050505] rounded-2xl p-4 mb-6 border border-white/5 shadow-inner">
-                            <div class="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mb-2">Authenticated Endpoint</div>
-                            <div class="text-xs font-mono text-emerald-500 truncate bg-emerald-500/5 p-2 rounded-lg border border-emerald-500/10">${s.url}</div>
-                        </div>
-                    </div>
-                    <button onclick="pipelineState.scanPredefinedWebsite('${s.id}')" 
-                        class="w-full py-4 rounded-2xl bg-white/5 border border-white/10 text-white font-black uppercase tracking-[0.2em] text-[10px] hover:bg-blue-600 hover:border-blue-500 hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all relative z-10 active:scale-95">
-                        Initialize Neural Audit
-                    </button>
-                </div>`).join('');
-
-                const hash = pipelineState.availableWebsites.map(s => s.id).join(',');
-                if (container.getAttribute('data-render-hash') !== hash) {
-                    container.innerHTML = sites;
-                    container.setAttribute('data-render-hash', hash);
-                    lucide.createIcons();
+                // If on website-scanner and sites list is empty, refresh it occasionally
+                const container = el.querySelector('.grid.grid-cols-2.gap-8.mt-12') || el.querySelector('.grid.grid-cols-3.gap-8');
+                if (container) {
+                    const sites = pipelineState.availableWebsites;
+                    const hash = sites.map(s => s.id).join(',');
+                    if (container.getAttribute('data-render-hash') !== hash) {
+                        this.renderWebsiteScanner(el); // Just re-render the whole tab if list changed
+                    }
                 }
             },
 
@@ -1385,7 +1381,7 @@
 
             renderTree(el) {
                 try {
-                    const vulns = (pipelineState.vulnerabilities || []).filter(v => v && ['PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING', 'FIXED', 'VALIDATED'].includes(v.status || ''));
+                    const vulns = (pipelineState.vulnerabilities || []).filter(v => v && ['QUEUED_FOR_PATCH', 'PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING', 'FIXED', 'VALIDATED'].includes(v.status || ''));
 
                     if (vulns.length === 0) {
                         el.innerHTML = `
@@ -1695,23 +1691,7 @@
                 this.updateComplianceDynamic(el);
             },
 
-            updateWebsiteScannerDynamic(el) {
-                // Keep the "Executive Scan" button in sync with engine status
-                const btn = document.querySelector('button[onclick*="executiveScan"]');
-                if (btn) {
-                    const isScanning = pipelineState.scanStatus === 'RUNNING';
-                    if (isScanning) {
-                        btn.innerText = 'SCANNING IN PROGRESS...';
-                        btn.disabled = true;
-                        btn.classList.add('opacity-50', 'animate-pulse');
-                    } else {
-                        btn.innerHTML = '<i data-lucide="shield-alert" class="w-6 h-6 animate-pulse"></i> RUN EXECUTIVE PROTOCOL';
-                        btn.disabled = false;
-                        btn.classList.remove('opacity-50', 'animate-pulse');
-                        lucide.createIcons();
-                    }
-                }
-            },
+            // Duplicate updateWebsiteScannerDynamic removed to prevent logic collisions.
 
             // Removed duplicate update methods that were causing DOM reference failures
             renderFeedback(el) {
@@ -1812,7 +1792,7 @@
                                 <input type="text" value="${s.url}" readonly 
                                     class="flex-1 bg-transparent text-xs font-mono text-blue-400 outline-none select-all cursor-pointer truncate" 
                                     onclick="this.select()" />
-                                <button onclick="navigator.clipboard.writeText('${s.url}'); this.innerHTML='<i data-lucide=\'check\'></i>'; lucide.createIcons(); setTimeout(() => {this.innerHTML='<i data-lucide=\'copy\'></i>'; lucide.createIcons();}, 1500)" 
+                                <button onclick="app.copyToClipboard('${s.url}')" 
                                     class="text-slate-600 hover:text-blue-400 transition-all p-1" title="Copy URL">
                                     <i data-lucide="copy" class="w-4 h-4"></i>
                                 </button>

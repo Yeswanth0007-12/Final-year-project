@@ -64,13 +64,14 @@ def run_scan_job(job):
             run_website_audit(scan_id, job["website_id"])
         elif job["type"] == "executive":
             run_executive_scan_task(scan_id)
+        elif job["type"] == "custom":
+            run_custom_website_audit(scan_id, job["url"])
     except Exception as e:
         append_log(scan_id, f"Job failed: {str(e)}", level="ERROR")
     finally:
         append_log(scan_id, "[SUCCESS] Job completed.")
-        job["status"] = "COMPLETED"
         if scan_id in terminal_sessions:
-            terminal_sessions[scan_id]["status"] = "COMPLETED"
+             terminal_sessions[scan_id]["status"] = "COMPLETED"
         active_scan = None
         process_queue()
 
@@ -570,7 +571,14 @@ def terminal_stream(scan_id: str = None, session_id: str = "default", last_scann
 @app.post("/scan")
 def execute_scan(background_tasks: BackgroundTasks):
     session_id = str(uuid.uuid4())
-    terminal_sessions[session_id] = {"logs": [], "status": "RUNNING"}
+    with terminal_sessions_lock:
+        terminal_sessions[session_id] = {
+            "scanner_logs": [], 
+            "automation_logs": [], 
+            "status": "RUNNING", 
+            "last_index_scanner": 0,
+            "last_index_automation": 0
+        }
     background_tasks.add_task(run_filesystem_scan, session_id)
     return {"scan_id": session_id}
 
@@ -667,11 +675,15 @@ def initialize_audit(website_id: str):
         raise HTTPException(status_code=404, detail="Website not found in registry")
     
     scan_id = str(uuid.uuid4())
-    terminal_sessions[scan_id] = {
-        "logs": [],
-        "status": "QUEUED",
-        "website_id": website_id
-    }
+    with terminal_sessions_lock:
+        terminal_sessions[scan_id] = {
+            "scanner_logs": [], 
+            "automation_logs": [], 
+            "status": "QUEUED",
+            "website_id": website_id,
+            "last_index_scanner": 0,
+            "last_index_automation": 0
+        }
     
     job = {
         "scan_id": scan_id,
@@ -702,44 +714,8 @@ def run_website_audit(scan_id: str, website_id: str):
     db.commit()
     db.refresh(scan_session)
 
-    # --- ALWAYS INJECT VULNERABILITIES FIRST ---
-    simulated_vulns = [
-        {"type": "EVAL_INJECTION", "snippet": "eval(userInput)", "risk": 10.0},
-        {"type": "DOM_XSS", "snippet": "element.innerHTML = userInput", "risk": 7.5},
-        {"type": "SQL_INJECTION", "snippet": "SELECT * FROM users WHERE name = 'user'", "risk": 8.0},
-        {"type": "EXEC_INJECTION", "snippet": "os.system(userInput)", "risk": 9.5}
-    ]
-    
-    num_to_inject = 2  # Exactly 2 vulnerabilities per website (20 total for 10 sites)
     detected_count = 0
-    
-    for i in range(num_to_inject):
-        sv = random.choice(simulated_vulns)
-        v_type = sv["type"]
-        snippet = f"{sv['snippet']} // Hash: {random.randint(1000,9999)}"
-        risk = sv["risk"]
-        
-        v_id = f"WEB-{random.randint(10000, 99999)}"
-        remediation = get_remediation_info(v_type, snippet)
-        db_vuln = Vulnerability(
-            id=v_id, scan_session_id=scan_session.id,
-            website_name=site["name"], line_number=random.randint(10, 200),
-            vulnerability_type=v_type, severity="HIGH" if risk > 7 else "MEDIUM",
-            code_snippet=snippet, risk_score=risk, url=site["url"],
-            suggested_fix=remediation["suggested_fix"],
-            diff=remediation["diff"],
-            patch_explanation=remediation.get("explanation"),
-            status="DETECTED",
-            updated_at=datetime.datetime.utcnow()
-        )
-        db.add(db_vuln)
-        db.commit()
-        trigger_pipeline_update()
-        detected_count += 1
-        scan_session.total_vulnerabilities += 1
-        scan_session.overall_risk_score += risk
-        append_log(scan_id, f"[SCANNER_ENGINE] Vulnerability detected: {site['name']} line {db_vuln.line_number}", level="ERROR", log_type="scanner")
-        time.sleep(0.3)
+    # Simulated vulns removed to use real scanner data only.
 
     try:
         response = requests.get(site["url"], timeout=10)
@@ -829,30 +805,39 @@ def run_website_audit(scan_id: str, website_id: str):
         db.close()
         terminal_sessions[scan_id]["status"] = "COMPLETED"
 
-@app.post("/scan-website/{website_id}")
-def scan_predefined_website(website_id: str, background_tasks: BackgroundTasks):
-    site = next((s for s in PREDEFINED_WEBSITES if s["id"] == website_id), None)
-    if not site:
-        raise HTTPException(status_code=404, detail="Website not found in registry")
-    
-    session_id = str(uuid.uuid4())
-    terminal_sessions[session_id] = {"logs": [], "status": "RUNNING"}
-    background_tasks.add_task(scan_website_task, site["url"], session_id, site["name"])
-    return {"scan_id": session_id}
+def run_custom_website_audit(scan_id: str, url: str):
+    parsed_app_name = url.split("//")[-1].split("/")[0] if "//" in url else url.split("/")[0]
+    app_name = f"CustomTarget:{parsed_app_name}"
+    scan_website_task(url, scan_id, app_name)
 
 @app.post("/scan-website")
-def scan_website_manual(payload: dict, background_tasks: BackgroundTasks):
+def scan_website_manual(payload: dict):
     url = payload.get("url")
     if not url:
         raise HTTPException(status_code=400, detail="URL is required")
     
     session_id = str(uuid.uuid4())
-    terminal_sessions[session_id] = {"logs": [], "status": "RUNNING"}
-    background_tasks.add_task(scan_website_task, url, session_id, url)
+    with terminal_sessions_lock:
+        terminal_sessions[session_id] = {
+            "scanner_logs": [], 
+            "automation_logs": [], 
+            "status": "QUEUED",
+            "last_index_scanner": 0,
+            "last_index_automation": 0
+        }
+    
+    job = {
+        "scan_id": session_id,
+        "type": "custom",
+        "url": url,
+        "status": "QUEUED"
+    }
+    scan_queue.append(job)
+    process_queue()
     return {"scan_id": session_id}
 
 @app.post("/executive-scan")
-def executive_scan(background_tasks: BackgroundTasks):
+def executive_scan_trigger():
     """
     Executive scan: Scans all websites and automatically starts remediation queue.
     """
@@ -861,16 +846,21 @@ def executive_scan(background_tasks: BackgroundTasks):
         terminal_sessions[session_id] = {
             "scanner_logs": [], 
             "automation_logs": [], 
-            "status": "RUNNING", 
+            "status": "QUEUED", 
             "last_index_scanner": 0,
             "last_index_automation": 0,
             "found_count": 0
         }
     
-    # Start scan task - it will auto-queue and start automation
-    background_tasks.add_task(run_executive_scan_task, session_id)
+    job = {
+        "scan_id": session_id,
+        "type": "executive",
+        "status": "QUEUED"
+    }
+    scan_queue.append(job)
+    process_queue()
     
-    return {"scan_id": session_id, "status": "RUNNING"}
+    return {"scan_id": session_id, "status": "QUEUED"}
 
 @app.post("/confirm-automation/{scan_id}")
 def confirm_automation(scan_id: str):
@@ -1062,44 +1052,7 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
     db = SessionLocal()
     found_count = 0
     
-    # --- ALWAYS INJECT VULNERABILITIES FIRST ---
-    simulated_vulns = [
-        {"type": "EVAL_INJECTION", "snippet": "eval(userInput)", "risk": 10.0},
-        {"type": "DOM_XSS", "snippet": "element.innerHTML = userInput", "risk": 7.5},
-        {"type": "SQL_INJECTION", "snippet": "SELECT * FROM users WHERE name = 'user'", "risk": 8.0},
-        {"type": "EXEC_INJECTION", "snippet": "os.system(userInput)", "risk": 9.5}
-    ]
-    
-    num_to_inject = 2  # Exactly 2 vulnerabilities per website (20 total for 10 sites)
-    
-    try:
-        for i in range(num_to_inject):
-            sv = random.choice(simulated_vulns)
-            v_type = sv["type"]
-            snippet = f"{sv['snippet']} // Hash: {random.randint(1000,9999)}"
-            risk = sv["risk"]
-            
-            v_id = f"WEB-{random.randint(10000, 99999)}"
-            remediation = get_remediation_info(v_type, snippet)
-            db_vuln = Vulnerability(
-                id=v_id, scan_session_id=scan_session_id,
-                website_name=app_name, line_number=random.randint(10, 200),
-                vulnerability_type=v_type, severity="HIGH" if risk > 7 else "MEDIUM",
-                code_snippet=snippet, risk_score=risk, url=url,
-                suggested_fix=remediation["suggested_fix"],
-                diff=remediation["diff"],
-                patch_explanation=remediation.get("explanation"),
-                status="DETECTED",
-                updated_at=datetime.datetime.utcnow()
-            )
-            db.add(db_vuln)
-            db.commit()
-            trigger_pipeline_update()
-            found_count += 1
-            append_log(session_id, f"[SCANNER_ENGINE] Vulnerability detected: {app_name} line {db_vuln.line_number}", level="ERROR", log_type="scanner")
-            time.sleep(0.3)
-    except Exception as e:
-        append_log(session_id, f"[SCANNER_ENGINE] ERROR injecting simulated vulnerabilities: {str(e)}", level="ERROR", log_type="scanner")
+    # Simulated vulns removed to use real scanner data only.
 
     try:
         response = requests.get(url, timeout=10)
@@ -1205,68 +1158,9 @@ def scan_website_core_scan_only(url: str, session_id: str, app_name: str, scan_s
 def scan_website_core(url: str, session_id: str, app_name: str, scan_session_id: int):
     append_log(session_id, f"Connecting to {app_name}...")
     append_log(session_id, "Fetching HTML content...")
+    # Simulated vulns removed to use real scanner data only.
     db = SessionLocal()
     detected_vulns = []
-    
-    # Check if this website has been thoroughly patched recently
-    previous_fixed = db.query(Vulnerability).filter(
-        Vulnerability.website_name == app_name,
-        Vulnerability.status == "FIXED"
-    ).count()
-    
-    if previous_fixed >= 2: # Or purely depending on overall status
-        append_log(session_id, f"[SYSTEM] Target domain {app_name} is secure.", level="SUCCESS")
-        append_log(session_id, f"[SYSTEM] Previous structural flaws have been neutralized by Neural Core.", level="SUCCESS")
-        db.close()
-        return 0 # No new bugs to find
-    
-    # --- ALWAYS INJECT VULNERABILITIES FIRST ---
-    simulated_vulns = [
-        {"type": "EVAL_INJECTION", "snippet": "eval(userInput)", "risk": 10.0},
-        {"type": "DOM_XSS", "snippet": "element.innerHTML = userInput", "risk": 7.5},
-        {"type": "SQL_INJECTION", "snippet": "SELECT * FROM users WHERE name = 'user'", "risk": 8.0},
-        {"type": "EXEC_INJECTION", "snippet": "os.system(userInput)", "risk": 9.5}
-    ]
-    
-    num_to_inject = 2  # Exactly 2 vulnerabilities per website (20 total for 10 sites)
-    for i in range(num_to_inject):
-        sv = random.choice(simulated_vulns)
-        v_type = sv["type"]
-        snippet = f"{sv['snippet']} // Hash: {random.randint(1000,9999)}"
-        risk = sv["risk"]
-        
-        v_id = f"WEB-{random.randint(10000, 99999)}"
-        remediation = get_remediation_info(v_type, snippet)
-        
-        db_vuln = Vulnerability(
-            id=v_id,
-            scan_session_id=scan_session_id, # Link to session
-            website_name=app_name,
-            line_number=random.randint(10, 200),
-            vulnerability_type=v_type,
-            severity="HIGH" if risk > 7 else "MEDIUM",
-            code_snippet=snippet,
-            risk_score=risk,
-            url=url,
-            suggested_fix=remediation["suggested_fix"],
-            diff=remediation["diff"],
-            patch_explanation=remediation.get("explanation"),
-            status="DETECTED",
-            updated_at=datetime.datetime.utcnow()
-        )
-        db.add(db_vuln)
-        db.commit()
-        trigger_pipeline_update()
-        
-        scan_session = db.query(ScanSession).filter(ScanSession.id == scan_session_id).first()
-        if scan_session:
-            scan_session.total_vulnerabilities += 1
-            scan_session.overall_risk_score += risk
-            db.commit()
-
-        detected_vulns.append(db_vuln)
-        append_log(session_id, f"[SCANNER_ENGINE] Vulnerability detected: {app_name} line {db_vuln.line_number}", level="ERROR", log_type="scanner")
-        time.sleep(0.3)
 
     try:
         response = requests.get(url, timeout=10)
@@ -1415,15 +1309,7 @@ def scan_website_core(url: str, session_id: str, app_name: str, scan_session_id:
     
     return len(detected_vulns)
 
-@app.get("/terminal-output")
-def get_terminal_output_legacy():
-    all_logs = []
-    for s in terminal_sessions.values():
-        all_logs.extend(s["logs"])
-    
-    # Format for legacy string output
-    formatted = [f"[{l['level']}] [{l['timestamp']}] {l['message']}" for l in all_logs[-50:]]
-    return {"logs": formatted}
+# Removed legacy log formatters
 
 @app.get("/terminal-stream")
 def get_terminal_stream(session_id: str, last_scanner_index: int = 0, last_automation_index: int = 0):
@@ -1582,7 +1468,7 @@ def get_system_core():
         "current_risk_score": avg_risk,
         "validated_count": fixed,
         "patched_count": fixed + active,
-        "total_scans": len(scans) if len(scans) > 0 else 12,
+        "total_scans": len(scans),
         "total_vulnerabilities": total,
         "integrity_status": "OPTIMAL" if active == 0 else "DEGRADED"
     }
@@ -1639,14 +1525,8 @@ def get_feedback():
     comments = []
     # If no real feedback, inject simulated intelligence logs
     if count == 0:
-        count = 14
-        avg_rating = 4.8
-        comments = [
-            {"vulnerability_id": "WEB-78291", "rating": 5, "comment": "Excellent automated response. AST parsed correctly without breaking syntax.", "created_at": "Today 10:42 AM"},
-            {"vulnerability_id": "VULN-41920", "rating": 5, "comment": "Threat neutralized successfully before execution layer.", "created_at": "Today 09:15 AM"},
-            {"vulnerability_id": "WEB-11923", "rating": 4, "comment": "Good patch, but slightly aggressive on the DOM sanitizer.", "created_at": "Yesterday 14:30 PM"},
-            {"vulnerability_id": "VULN-99120", "rating": 5, "comment": "Perfect regex match. Saved us hours of manual QA.", "created_at": "Yesterday 11:20 AM"}
-        ]
+        avg_rating = 0.0
+        comments = []
     else:
         avg_rating = sum(f.rating for f in feedbacks) / count
         for f in feedbacks:
@@ -1667,54 +1547,7 @@ def get_feedback():
 class ScanWebsiteRequest(BaseModel):
     url: str
 
-@app.post("/scan-website")
-def scan_custom_website(req: ScanWebsiteRequest, background_tasks: BackgroundTasks):
-    """Endpoint for the 'Engage Kernel' manual website scanner."""
-    session_id = str(uuid.uuid4())
-    terminal_sessions[session_id] = {
-        "scanner_logs": [], 
-        "automation_logs": [], 
-        "status": "RUNNING", 
-        "last_index_scanner": 0,
-        "last_index_automation": 0
-    }
-    
-    # Extract domain name for the app name
-    parsed_app_name = req.url.split("//")[-1].split("/")[0] if "//" in req.url else req.url.split("/")[0]
-    app_name = f"CustomTarget:{parsed_app_name}"
-    
-    background_tasks.add_task(scan_website_task, req.url, session_id, app_name)
-    return {"scan_id": session_id}
-
-@app.post("/initialize-audit/{website_id}")
-def initialize_audit(website_id: str, background_tasks: BackgroundTasks):
-    site = next((s for s in PREDEFINED_WEBSITES if s["id"] == website_id), None)
-    if not site:
-        raise HTTPException(status_code=404, detail="Website not found in registry")
-        
-    session_id = str(uuid.uuid4())
-    terminal_sessions[session_id] = {
-        "scanner_logs": [], 
-        "automation_logs": [], 
-        "status": "RUNNING", 
-        "last_index_scanner": 0,
-        "last_index_automation": 0
-    }
-    background_tasks.add_task(scan_website_task, site["url"], session_id, site["name"])
-    return {"scan_id": session_id}
-
-@app.post("/executive-scan")
-def run_executive_scan(background_tasks: BackgroundTasks):
-    session_id = str(uuid.uuid4())
-    terminal_sessions[session_id] = {
-        "scanner_logs": [], 
-        "automation_logs": [], 
-        "status": "RUNNING", 
-        "last_index_scanner": 0,
-        "last_index_automation": 0
-    }
-    background_tasks.add_task(run_executive_scan_task, session_id)
-    return {"scan_id": session_id}
+# Redundant Endpoint Cleanup
 
 def run_executive_scan_task(session_id: str):
     append_log(session_id, "[SYSTEM] Executive Scan Initialized.", log_type="scanner")
