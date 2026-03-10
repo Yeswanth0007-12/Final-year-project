@@ -1004,7 +1004,7 @@
                 if (!body) return;
 
                 const logsSource = this.terminalMode === 'scan'
-                    ? (this.terminalLogs || [])
+                    ? (pipelineState.terminalLogs || [])
                     : (pipelineState.pipelineLogs || []);
 
                 // Get only logs we haven't rendered yet
@@ -1503,6 +1503,35 @@
                 } catch (e) { console.error("Tree render error", e); }
             },
 
+            updateTreeDynamic(el) {
+                // Decision tree update mapping
+                const vulns = pipelineState.vulnerabilities;
+                const stateHash = vulns.map(v => v.status).join('|');
+                if (el.getAttribute('data-render-hash') !== stateHash) {
+                    this.renderTree(el);
+                    el.setAttribute('data-render-hash', stateHash);
+                }
+            },
+
+            updateComplianceDynamic(el) {
+                // If data changed, we just re-render the whole compliance panel for simplicity since it's heavy
+                const c = pipelineState.complianceData;
+                const stateHash = `${c.total_fixed}-${c.open_count}-${(c.history || []).length}`;
+                if (el.getAttribute('data-render-hash') !== stateHash) {
+                    this.renderCompliance(el);
+                    el.setAttribute('data-render-hash', stateHash);
+                }
+            },
+
+            updateFeedbackDynamic(el) {
+                const f = pipelineState.feedbackData;
+                const stateHash = `${f.total_feedback}-${f.average_rating}`;
+                if (el.getAttribute('data-render-hash') !== stateHash) {
+                    this.renderFeedback(el);
+                    el.setAttribute('data-render-hash', stateHash);
+                }
+            },
+
             renderSystem(el) {
                 const s = pipelineState.systemCore;
                 // Add minor random fluctuation for the visual "alive" effect
@@ -1900,6 +1929,37 @@
                 </div>
             `;
                 lucide.createIcons();
+            },
+
+            updateSystemDynamic(el) {
+                const s = pipelineState.systemCore;
+                const accuracy = (s.engine_accuracy || 0).toFixed(1);
+                const stateHash = `${accuracy}-${s.validated_count}-${s.patched_count}`;
+                if (el.getAttribute('data-render-hash') !== stateHash) {
+                    this.renderSystem(el);
+                    el.setAttribute('data-render-hash', stateHash);
+                }
+            },
+
+            updateWebsiteScannerDynamic(el) {
+                const sites = pipelineState.websites;
+                const stateHash = (sites || []).map(s => s.status).join('|');
+                if (el.getAttribute('data-render-hash') !== stateHash) {
+                    this.renderWebsiteScanner(el);
+                    el.setAttribute('data-render-hash', stateHash);
+                }
+            },
+
+            updatePatchLabDynamic(el) {
+                const activeId = pipelineState.activeVulnId;
+                const vuln = (pipelineState.vulnerabilities || []).find(v => v.id === activeId);
+                if (vuln) {
+                    const stateHash = `${vuln.id}-${vuln.status}`;
+                    if (el.getAttribute('data-render-hash') !== stateHash) {
+                        this.renderPatchLab(el);
+                        el.setAttribute('data-render-hash', stateHash);
+                    }
+                }
             },
         };
 
