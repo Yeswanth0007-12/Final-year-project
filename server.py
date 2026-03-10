@@ -1471,7 +1471,7 @@ def get_vulnerabilities():
     db = SessionLocal()
     # Return all vulnerabilities including automated statuses
     vulns = db.query(Vulnerability).all()
-    res = [v.__dict__ for v in vulns]  
+    res = [dict(v.__dict__) for v in vulns]  
     for r in res:
         r.pop('_sa_instance_state', None)
     db.close()

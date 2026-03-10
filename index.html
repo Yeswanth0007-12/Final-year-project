@@ -240,8 +240,8 @@
                         fetch(`${API_URL}/pipeline/status`).then(r => r.ok ? r.json() : { paused: this.paused, active: this.activeJob, queuing_active: this.queuingActive, queue: this.queue })
                     ]);
 
-                    this.vulnerabilities = Array.isArray(vulns) ? vulns : (this.vulnerabilities || []);
-                    this.metrics = dash || this.metrics;
+                    this.vulnerabilities = (vulns && Array.isArray(vulns)) ? vulns : (Array.isArray(this.vulnerabilities) ? this.vulnerabilities : []);
+                    this.metrics = (dash && typeof dash === 'object' && !dash.detail) ? dash : this.metrics;
                     if (dash) {
                         this.metricsHistory.push({ time: Date.now(), ...dash });
                         if (this.metricsHistory.length > 50) this.metricsHistory.shift();
@@ -768,17 +768,14 @@
                 <div class="text-[11px] font-black px-6 py-2 rounded-full border border-blue-500 text-blue-400 bg-blue-900/30 shadow-[0_0_30px_rgba(59,130,246,0.4)] uppercase tracking-[0.3em] transition-all duration-500 animate-pulse flex items-center gap-2">
                     <i data-lucide="activity" class="w-4 h-4"></i> LIVE TICKER
                 </div>
-                <!-- Legend -->
-                <div class="flex gap-4 text-[9px] font-black uppercase tracking-widest mt-2">
-                    <span class="text-rose-500/60 flex items-center gap-1"><span class="w-2 h-0.5 bg-rose-500/60"></span> Total</span>
-                    <span class="text-blue-400 flex items-center gap-1 drop-shadow-[0_0_5px_rgba(59,130,246,0.8)]"><span class="w-2 h-0.5 bg-blue-400"></span> Patching</span>
-                    <span class="text-emerald-400 flex items-center gap-1 drop-shadow-[0_0_5px_rgba(16,185,129,0.8)]"><span class="w-2 h-0.5 bg-emerald-400"></span> Secured</span>
-                </div>
             </div>
         </div>
         
         <!-- Live Trading Graph Container -->
-        <div id="dashboard-trading-graph-container" class="h-64 rounded-3xl border border-white/5 bg-[#000000]/60 relative overflow-hidden mb-8 shadow-inner group">
+        <div class="grid grid-cols-3 gap-6 mb-8">
+            <div id="dashboard-trading-graph-total" class="h-48 rounded-3xl border border-rose-500/20 bg-[#000000]/60 relative overflow-hidden shadow-inner group transition-all hover:border-rose-500/50"></div>
+            <div id="dashboard-trading-graph-patching" class="h-48 rounded-3xl border border-blue-500/20 bg-[#000000]/60 relative overflow-hidden shadow-inner group transition-all hover:border-blue-500/50"></div>
+            <div id="dashboard-trading-graph-secured" class="h-48 rounded-3xl border border-emerald-500/20 bg-[#000000]/60 relative overflow-hidden shadow-inner group transition-all hover:border-emerald-500/50"></div>
         </div>
                     <!-- Active Indicators -->
                     <div class="grid grid-cols-3 gap-6 relative z-10">
@@ -829,39 +826,44 @@
                 this.updateProgressBar();
 
                 // Smoothly redraw to simulate a Trading ticker heartbeat
-                if (el.querySelector('#dashboard-trading-graph-container')) {
-                    this.renderTradingGraph(el.querySelector('#dashboard-trading-graph-container'));
+                if (el.querySelector('#dashboard-trading-graph-total')) {
+                    this.renderTradingGraph(el.querySelector('#dashboard-trading-graph-total'), 'total', '#f43f5e', 'text-rose-500', 'Total Discovered');
+                    this.renderTradingGraph(el.querySelector('#dashboard-trading-graph-patching'), 'patched', '#3b82f6', 'text-blue-500', 'Active Patching');
+                    this.renderTradingGraph(el.querySelector('#dashboard-trading-graph-secured'), 'validated', '#10b981', 'text-emerald-500', 'Validated Secure');
                 }
             },
 
-            renderTradingGraph(container) {
+            renderTradingGraph(container, type, colorHex, colorClass, label) {
                 if (pipelineState.metricsHistory.length < 2) {
-                    container.innerHTML = `<div class="w-full h-full flex flex-col items-center justify-center text-blue-500/50 uppercase tracking-widest text-[10px] font-black"><i data-lucide="bar-chart-2" class="w-8 h-8 mb-4 animate-pulse"></i> Awaiting sufficient telemetry...</div>`;
+                    container.innerHTML = `<div class="w-full h-full flex flex-col items-center justify-center ${colorClass}/50 uppercase tracking-widest text-[10px] font-black"><i data-lucide="bar-chart-2" class="w-6 h-6 mb-3 animate-pulse"></i> Awaiting Data...</div>`;
                     lucide.createIcons();
                     return;
                 }
 
                 const history = pipelineState.metricsHistory;
-                const maxVal = Math.max(10, ...history.map(h => h.total || 0));
+                const maxVal = Math.max(10, ...history.map(h => h[type] || 0));
 
-                // Draw SVG Polyline for Patched Points mapping (Trading Graph logic)
-                const pointsTotal = history.map((h, i) => `${(i / (Math.max(1, history.length - 1))) * 100},${100 - ((h.total || 0) / maxVal) * 100}`).join(' ');
-                const pointsPatched = history.map((h, i) => `${(i / (Math.max(1, history.length - 1))) * 100},${100 - ((h.patched || 0) / maxVal) * 100}`).join(' ');
-                const pointsValidated = history.map((h, i) => `${(i / (Math.max(1, history.length - 1))) * 100},${100 - ((h.validated || 0) / maxVal) * 100}`).join(' ');
+                const points = history.map((h, i) => `${(i / (Math.max(1, history.length - 1))) * 100},${100 - ((h[type] || 0) / maxVal) * 100}`).join(' ');
+
+                const lastPoint = history[history.length - 1] || {};
+                const currentY = 100 - ((lastPoint[type] || 0) / maxVal) * 100;
+                const currentValue = lastPoint[type] || 0;
 
                 container.innerHTML = `
-        <svg viewBox="0 -10 100 120" preserveAspectRatio="none" class="w-full h-full overflow-visible">
+        <div class="absolute top-5 left-6 text-[10px] font-black ${colorClass} tracking-widest uppercase z-10 flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full" style="background-color: ${colorHex}; box-shadow: 0 0 10px ${colorHex}"></div>
+            ${label}
+        </div>
+        <div class="absolute bottom-5 left-6 text-4xl font-black ${colorClass} tracking-tighter shadow-sm z-10 drop-shadow-[0_0_15px_${colorHex}40]">${currentValue}</div>
+        <svg viewBox="0 -10 100 120" preserveAspectRatio="none" class="absolute inset-0 w-full h-full overflow-visible opacity-70 mt-6 pointer-events-none">
             <!-- Grid lines -->
-            <path d="M0,25 L100,25 M0,50 L100,50 M0,75 L100,75 M0,100 L100,100" stroke="rgba(255,255,255,0.05)" stroke-width="0.2" fill="none" />
+            <path d="M0,33 L100,33 M0,66 L100,66 M0,100 L100,100" stroke="rgba(255,255,255,0.03)" stroke-width="0.2" fill="none" />
             
-            <!-- Lines -->
-            <polyline points="${pointsTotal}" fill="none" stroke="rgba(244, 63, 94, 0.4)" stroke-width="1.5" stroke-dasharray="2" />
-            <polyline points="${pointsPatched}" fill="none" stroke="#3b82f6" stroke-width="1.5" stroke-linejoin="round" class="drop-shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
-            <polyline points="${pointsValidated}" fill="none" stroke="#10b981" stroke-width="1.5" stroke-linejoin="round" class="drop-shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-[pulse_2s_infinite]" />
+            <!-- Dynamic Line -->
+            <polyline points="${points}" fill="none" stroke="${colorHex}" stroke-width="2.5" stroke-linejoin="round" style="filter: drop-shadow(0 0 8px ${colorHex}80);" />
             
-            <!-- Current Pulse Points -->
-            <circle cx="100" cy="${100 - ((history[history.length - 1].patched || 0) / maxVal) * 100}" r="2" fill="#3b82f6" />
-            <circle cx="100" cy="${100 - ((history[history.length - 1].validated || 0) / maxVal) * 100}" r="2" fill="#10b981" />
+            <!-- Current Pulse Point -->
+            <circle cx="100" cy="${currentY}" r="3" fill="${colorHex}" class="animate-pulse" style="filter: drop-shadow(0 0 10px ${colorHex});" />
         </svg>
     `;
             },
@@ -1028,15 +1030,18 @@
             },
 
             updateVulnsDynamic(el) {
-                const tbody = el.querySelector('tbody');
-                if (!tbody) return;
+                try {
+                    const tbody = el.querySelector('tbody');
+                    if (!tbody) return;
 
-                // Always show ALL vulnerabilities regardless of status
-                const allVulns = pipelineState.vulnerabilities;
-                const stateHash = allVulns.map(v => v.id + '-' + v.status).join('|');
+                    // Always show ALL vulnerabilities regardless of status
+                    const allVulns = Array.isArray(pipelineState.vulnerabilities) ? pipelineState.vulnerabilities : [];
+                    if (allVulns.length === 0) return;
 
-                if (tbody.getAttribute('data-render-hash') !== stateHash) {
-                    const rows = allVulns.map(v => `
+                    const stateHash = allVulns.map(v => (v.id || 'err') + '-' + (v.status || 'null')).join('|');
+
+                    if (tbody.getAttribute('data-render-hash') !== stateHash) {
+                        const rows = allVulns.map(v => `
                     <tr class="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
                         <td class="p-6 font-mono text-[11px] text-blue-500 font-bold tracking-wider">${v.id}</td>
                         <td class="p-6">
@@ -1055,10 +1060,10 @@
                         </td>
                         <td class="p-6">
                             <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${v.status === 'FIXED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]' :
-                            ['QUEUED_FOR_PATCH', 'PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(v.status) ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
-                                v.status === 'FAILED' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
-                                    'bg-slate-800/40 text-slate-400 border border-white/10'
-                        }">
+                                ['QUEUED_FOR_PATCH', 'PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(v.status) ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
+                                    v.status === 'FAILED' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
+                                        'bg-slate-800/40 text-slate-400 border border-white/10'
+                            }">
                                 ${(v.status || 'UNKNOWN').replace(/_/g, ' ')}
                             </span>
                         </td>
@@ -1084,10 +1089,11 @@
 
 
 
-                    tbody.innerHTML = rows;
-                    tbody.setAttribute('data-render-hash', stateHash);
-                    lucide.createIcons();
-                }
+                        tbody.innerHTML = rows;
+                        tbody.setAttribute('data-render-hash', stateHash);
+                        lucide.createIcons();
+                    }
+                } catch (e) { console.error("Vuln Render Err:", e); }
             },
 
             updateWebsiteScannerDynamic(el) {
@@ -1819,3 +1825,4 @@
 </body>
 
 </html>
+```
