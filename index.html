@@ -566,6 +566,7 @@
                     else if (page === 'decision-tree') this.updateTreeDynamic(viewport);
                     else if (page === 'system-core') this.updateSystemDynamic(viewport);
                     else if (page === 'compliance') this.updateComplianceDynamic(viewport);
+                    else if (page === 'patch-lab') this.updatePatchLabDynamic(viewport);
                     else if (page === 'website-scanner') {
                         this.updateWebsiteScannerDynamic(viewport);
                     }
@@ -827,17 +828,22 @@
                 // Update basic stats
                 const stats = el.querySelectorAll('.text-7xl');
                 if (stats.length >= 4) {
-                    stats[0].innerText = s.total || 0;
-                    stats[1].innerText = s.patched || 0;
-                    stats[2].innerText = s.validated || 0;
-                    stats[3].innerText = s.risk_score || 0;
+                    if (stats[0].innerText != s.total) stats[0].innerText = s.total || 0;
+                    if (stats[1].innerText != s.patched) stats[1].innerText = s.patched || 0;
+                    if (stats[2].innerText != s.validated) stats[2].innerText = s.validated || 0;
+                    if (stats[3].innerText != s.risk_score) stats[3].innerText = s.risk_score || 0;
                 }
 
                 this.updateProgressBar();
 
-                // Smoothly redraw to simulate a Radar Sweep heartbeat
-                if (el.querySelector('#dashboard-radar')) {
-                    this.renderOrbitalRadar(el.querySelector('#dashboard-radar'));
+                // Smoothly redraw to simulate a Radar Sweep heartbeat only when data changes
+                const radar = el.querySelector('#dashboard-radar');
+                if (radar) {
+                    const radarHash = `${s.validated || 0}-${vulns.length}-${vulns.map(v => v.status || '').join(',')}`;
+                    if (radar.getAttribute('data-render-hash') !== radarHash) {
+                        this.renderOrbitalRadar(radar);
+                        radar.setAttribute('data-render-hash', radarHash);
+                    }
                 }
             },
 
@@ -1152,14 +1158,20 @@
                 const btn = document.querySelector('button[onclick*="executiveScan"]');
                 if (btn) {
                     const isScanning = pipelineState.scanStatus === 'RUNNING';
-                    if (isScanning) {
-                        btn.innerHTML = '<i data-lucide="refresh-cw" class="w-6 h-6 animate-spin"></i> SCANNING IN PROGRESS...';
-                        btn.disabled = true;
-                        btn.classList.add('opacity-50', 'animate-pulse');
-                    } else {
-                        btn.innerHTML = '<i data-lucide="shield-alert" class="w-6 h-6 animate-pulse"></i> RUN EXECUTIVE PROTOCOL';
-                        btn.disabled = false;
-                        btn.classList.remove('opacity-50', 'animate-pulse');
+                    const currentState = btn.getAttribute('data-scanning-state');
+                    const newState = isScanning ? 'true' : 'false';
+                    
+                    if (currentState !== newState) {
+                        if (isScanning) {
+                            btn.innerHTML = '<i data-lucide="refresh-cw" class="w-6 h-6 animate-spin"></i> SCANNING IN PROGRESS...';
+                            btn.disabled = true;
+                            btn.classList.add('opacity-50', 'animate-pulse');
+                        } else {
+                            btn.innerHTML = '<i data-lucide="shield-alert" class="w-6 h-6 animate-pulse"></i> RUN EXECUTIVE PROTOCOL';
+                            btn.disabled = false;
+                            btn.classList.remove('opacity-50', 'animate-pulse');
+                        }
+                        btn.setAttribute('data-scanning-state', newState);
                         lucide.createIcons();
                     }
                 }
@@ -1167,10 +1179,12 @@
                 // If on website-scanner and sites list is empty, refresh it occasionally
                 const container = el.querySelector('.grid.grid-cols-2.gap-8.mt-12') || el.querySelector('.grid.grid-cols-3.gap-8');
                 if (container) {
-                    const sites = pipelineState.availableWebsites;
+                    const sites = pipelineState.availableWebsites || [];
                     const hash = sites.map(s => s.id).join(',');
                     if (container.getAttribute('data-render-hash') !== hash) {
                         this.renderWebsiteScanner(el); // Just re-render the whole tab if list changed
+                        const newContainer = el.querySelector('.grid.grid-cols-2.gap-8.mt-12') || el.querySelector('.grid.grid-cols-3.gap-8');
+                        if (newContainer) newContainer.setAttribute('data-render-hash', hash);
                     }
                 }
             },
@@ -1401,6 +1415,18 @@
             `;
                 } catch (e) {
                     console.error("Patch Lab Exception:", e);
+                }
+            },
+
+            updatePatchLabDynamic(el) {
+                const patches = (pipelineState.vulnerabilities || []).filter(v =>
+                    ['PATCH_APPLIED', 'VALIDATING', 'FIXED'].includes(v.status)
+                );
+                const v = patches.find(i => i.id === pipelineState.activeVulnId) || (patches.length > 0 ? patches[0] : null);
+                const hash = v ? `${v.id}-${v.status}` : 'empty';
+                if (el.getAttribute('data-render-hash') !== hash) {
+                    this.renderPatchLab(el);
+                    el.setAttribute('data-render-hash', hash);
                 }
             },
 
