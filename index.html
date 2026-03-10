@@ -623,6 +623,17 @@
                 }
             },
 
+            showToast(msg, color = 'emerald') {
+                const toast = document.createElement('div');
+                toast.className = `fixed bottom-8 right-8 z-[200] px-6 py-4 rounded-2xl glass border border-${color}-500/30 text-${color}-400 font-black tracking-widest uppercase text-[10px] shadow-[0_10px_30px_rgba(16,185,129,0.2)] animate-in slide-in-from-bottom flex items-center gap-3`;
+                toast.innerHTML = `<span class="w-2 h-2 rounded-full bg-${color}-500 animate-pulse"></span> ${msg}`;
+                document.body.appendChild(toast);
+                setTimeout(() => {
+                    toast.classList.add('animate-out', 'fade-out', 'duration-500');
+                    setTimeout(() => toast.remove(), 500);
+                }, 3000);
+            },
+
             showAutomationSuccessPopup() {
                 if (document.getElementById('automation-success-overlay')) return;
 

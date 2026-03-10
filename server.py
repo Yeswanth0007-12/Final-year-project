@@ -345,9 +345,9 @@ def run_patch_pipeline(job):
         # Log processing start
         append_log(scan_id, f"[AUTOMATION_KERNEL] Processing vulnerability: {vuln.website_name}", log_type="automation")
         
-        # Dynamic wait time based on queue size to hit ~15s total
+        # Dynamic wait time based on queue size to hit ~25s total
         total_queued = max(1, patch_queue.qsize() + 1)
-        base_delay = max(0.2, 15.0 / total_queued) # distribute 15 seconds across queue items
+        base_delay = max(0.5, 25.0 / total_queued) # distribute 25 seconds across queue items
         step_delay = base_delay * 0.25 # 4 steps per vulnerability
         
         # 1. QUEUED -> GENERATING 
