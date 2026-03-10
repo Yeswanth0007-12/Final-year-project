@@ -267,8 +267,10 @@
                         app.showAutomationSuccessPopup();
                     }
 
-                    // NEVER call app.render() here - that causes blinking.
-                    // Only update specific data-bound elements without re-building the DOM shell.
+                    // PERSISTENCE: Save state for reload stability
+                    localStorage.setItem('seclab_current_scan_id', this.currentScanId);
+                    localStorage.setItem('seclab_active_vuln_id', this.activeVulnId);
+
                     app.smartUpdate();
                 } catch (e) { console.error("Sync Error", e); }
             },
@@ -391,13 +393,22 @@
             lastPage: null, // Track page for stability
 
             init() {
+                // Restore state from persistence
+                this.currentScanId = localStorage.getItem('seclab_current_scan_id') || 'default';
+                this.activeVulnId = localStorage.getItem('seclab_active_vuln_id') || null;
+                pipelineState.currentScanId = this.currentScanId;
+                pipelineState.activeVulnId = this.activeVulnId;
+
                 router.go('dashboard');
                 pipelineState.fetchAll(); // Fetch data immediately
                 pipelineState.fetchWebsites();
-                // Start live sync - ULTRA FAST 500ms polling for dynamic live-feed
+
+                // Start live sync - Heartbeat polling
                 setInterval(() => {
                     pipelineState.fetchAll();
-                    if (router.current === 'terminal' || pipelineState.terminalMode) {
+                    // Always poll terminal if a scan is running (for notifications) 
+                    // or if currently viewing terminal
+                    if (router.current === 'terminal' || pipelineState.scanStatus === 'RUNNING' || pipelineState.queuingActive) {
                         pipelineState.fetchTerminal();
                     }
                 }, 500);
@@ -520,22 +531,33 @@
 
                 // For full page transitions, only clear if we actually changed pages
                 if (!isUpdate && this.lastPage !== page) {
-                    viewport.innerHTML = '';
-                    if (page === 'dashboard') this.renderDashboard(viewport);
-                    else if (page === 'vulnerabilities') this.renderVulns(viewport);
-                    else if (page === 'patch-lab') this.renderPatchLab(viewport);
-                    else if (page === 'decision-tree') this.renderTree(viewport);
-                    else if (page === 'system-core') this.renderSystem(viewport);
-                    else if (page === 'compliance') this.renderCompliance(viewport);
-                    else if (page === 'feedback') this.renderFeedback(viewport);
-                    else if (page === 'terminal') this.renderTerminal(viewport);
-                    else if (page === 'website-scanner') this.renderWebsiteScanner(viewport);
-                    this.lastPage = page;
 
-                    // Yield to browser paint before calculating heavy SVG icon DOM conversions
-                    requestAnimationFrame(() => {
-                        lucide.createIcons();
-                    });
+                    // Add smooth fade out effect
+                    viewport.style.transition = 'opacity 0.15s ease-out';
+                    viewport.style.opacity = '0';
+
+                    setTimeout(() => {
+                        viewport.innerHTML = '';
+                        if (page === 'dashboard') this.renderDashboard(viewport);
+                        else if (page === 'vulnerabilities') this.renderVulns(viewport);
+                        else if (page === 'patch-lab') this.renderPatchLab(viewport);
+                        else if (page === 'decision-tree') this.renderTree(viewport);
+                        else if (page === 'system-core') this.renderSystem(viewport);
+                        else if (page === 'compliance') this.renderCompliance(viewport);
+                        else if (page === 'feedback') this.renderFeedback(viewport);
+                        else if (page === 'terminal') this.renderTerminal(viewport);
+                        else if (page === 'website-scanner') this.renderWebsiteScanner(viewport);
+
+                        this.lastPage = page;
+
+                        // Yield to browser paint before calculating heavy SVG icon DOM conversions
+                        requestAnimationFrame(() => {
+                            lucide.createIcons();
+                            // Fade back in
+                            viewport.style.opacity = '1';
+                        });
+                    }, 150);
+
                 } else {
                     // Targeted Dynamic Updates
                     if (page === 'dashboard') this.updateDashboardDynamic(viewport);
@@ -679,7 +701,8 @@
 
             async confirmAutomationExecution(scanId) {
                 try {
-                    await fetch(`${API_URL}/approve-queue/${scanId}`, { method: 'POST' });
+                    // Reconciled endpoint with backend alias
+                    await fetch(`${API_URL}/confirm-automation/${scanId}`, { method: 'POST' });
                     app.showToast('✅ Automation Protocol Activated!', 'emerald');
                     // Automatically switch to automation tab
                     app.switchTerminalMode('pipeline');
@@ -1036,18 +1059,23 @@
             },
 
             showToast(message, color = 'blue') {
-                // Remove any existing toast
                 const existing = document.getElementById('seclab-toast');
                 if (existing) existing.remove();
 
                 const toast = document.createElement('div');
                 toast.id = 'seclab-toast';
-                toast.className = `fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-8 py-4 rounded-2xl glass border border-${color}-500/40 text-${color}-300 font-black text-sm shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-3 transition-all duration-500 opacity-0`;
-                toast.innerHTML = `<span>${message}</span>`;
+                const colorMap = {
+                    'emerald': 'emerald', 'rose': 'rose', 'blue': 'blue', 'amber': 'amber', 'teal': 'teal'
+                };
+                const c = colorMap[color] || 'blue';
+
+                toast.className = `fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-8 py-4 rounded-2xl glass border border-${c}-500/40 text-${c}-300 font-black text-sm shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex items-center gap-3 transition-opacity duration-500 opacity-0`;
+                toast.innerHTML = `<span class="w-3 h-3 rounded-full bg-${c}-500 animate-pulse"></span> <span>${message}</span>`;
                 document.body.appendChild(toast);
-                requestAnimationFrame(() => { toast.style.opacity = '1'; });
+                requestAnimationFrame(() => { toast.classList.remove('opacity-0'); toast.classList.add('opacity-100'); });
                 setTimeout(() => {
-                    toast.style.opacity = '0';
+                    toast.classList.remove('opacity-100');
+                    toast.classList.add('opacity-0');
                     setTimeout(() => toast.remove(), 600);
                 }, 5000);
             },

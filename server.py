@@ -541,33 +541,6 @@ def read_root():
 def get_available_websites():
     return {"websites": PREDEFINED_WEBSITES}
 
-@app.get("/terminal-stream")
-@app.get("/terminal-stream/{scan_id}")
-def terminal_stream(scan_id: str = None, session_id: str = "default", last_scanner_index: int = 0, last_automation_index: int = 0):
-    sid = scan_id or session_id
-    session = terminal_sessions.get(sid, {
-        "scanner_logs": [], 
-        "automation_logs": [], 
-        "status": "COMPLETED", 
-        "last_index_scanner": 0,
-        "last_index_automation": 0
-    })
-    
-    total_scanner = session.get("scanner_logs", [])
-    new_scanner = total_scanner[last_scanner_index:]
-    
-    total_automation = session.get("automation_logs", [])
-    new_automation = total_automation[last_automation_index:]
-    
-    return {
-        "status": session.get("status", "COMPLETED"),
-        "new_scanner_logs": new_scanner,
-        "new_automation_logs": new_automation,
-        "last_scanner_index": len(total_scanner),
-        "last_automation_index": len(total_automation),
-        "found_count": session.get("found_count", 0)
-    }
-
 @app.post("/scan")
 def execute_scan(background_tasks: BackgroundTasks):
     session_id = str(uuid.uuid4())
@@ -577,7 +550,8 @@ def execute_scan(background_tasks: BackgroundTasks):
             "automation_logs": [], 
             "status": "RUNNING", 
             "last_index_scanner": 0,
-            "last_index_automation": 0
+            "last_index_automation": 0,
+            "found_count": 0
         }
     background_tasks.add_task(run_filesystem_scan, session_id)
     return {"scan_id": session_id}
@@ -859,7 +833,8 @@ def scan_website_manual(payload: dict):
             "automation_logs": [], 
             "status": "QUEUED",
             "last_index_scanner": 0,
-            "last_index_automation": 0
+            "last_index_automation": 0,
+            "found_count": 0
         }
     
     job = {
@@ -899,56 +874,9 @@ def executive_scan_trigger():
     return {"scan_id": session_id, "status": "QUEUED"}
 
 @app.post("/confirm-automation/{scan_id}")
-def confirm_automation(scan_id: str):
-    """
-    Manual trigger endpoint (legacy support).
-    Executive scan now auto-queues, but this endpoint remains for manual workflows.
-    """
-    if scan_id not in scan_sessions_data:
-        raise HTTPException(status_code=404, detail="Scan session not found.")
-    
-    session = scan_sessions_data[scan_id]
-    vuln_ids = session.get("vulnerabilities", [])
-    
-    if not vuln_ids:
-        raise HTTPException(status_code=404, detail="No vulnerabilities found for this scan.")
-    
-    db = SessionLocal()
-    try:
-        while not patch_queue.empty():
-            try:
-                patch_queue.get_nowait()
-            except queue.Empty:
-                break
-        
-        queued_count = 0
-        for i, v_id in enumerate(vuln_ids, 1):
-            vuln = db.query(Vulnerability).filter(Vulnerability.id == v_id).first()
-            if vuln and vuln.status == "DETECTED":
-                vuln.status = "QUEUED_FOR_PATCH"
-                patch_queue.put({"vuln_id": vuln.id, "scan_id": scan_id, "status": "QUEUED"})
-                queued_count += 1
-                append_log(scan_id, f"[AUTOMATION_KERNEL] ({i}/{len(vuln_ids)}) Queued: {vuln.vulnerability_type} in {vuln.website_name}", log_type="automation")
-                time.sleep(0.1)
-        
-        db.commit()
-        trigger_pipeline_update()
-        
-        queue_size = patch_queue.qsize()
-        append_log(scan_id, f"[AUTOMATION_KERNEL] Queue initialized with {queue_size} vulnerabilities", log_type="automation")
-        append_log(scan_id, "[AUTOMATION_KERNEL] Starting remediation pipeline...", log_type="automation")
-        
-        pipeline_paused_event.clear()
-        process_patch_queue()
-        
-        return {
-            "status": "AUTOMATION_STARTED",
-            "queue_size": queue_size,
-            "queued_count": queued_count,
-            "message": f"Automation started for {queued_count} vulnerabilities"
-        }
-    finally:
-        db.close()
+def confirm_automation_alias(scan_id: str, background_tasks: BackgroundTasks):
+    """Alias for approve-queue to ensure frontend compatibility."""
+    return approve_queue(scan_id, background_tasks)
 
 @app.post("/pipeline/queue-all")
 def queue_all_detected(background_tasks: BackgroundTasks):
@@ -1441,7 +1369,7 @@ def scan_website_core(url: str, session_id: str, app_name: str, scan_session_id:
 # Removed legacy log formatters
 
 @app.get("/terminal-stream")
-def get_terminal_stream(session_id: str, last_scanner_index: int = 0, last_automation_index: int = 0):
+def get_terminal_stream(session_id: str = "default", last_scanner_index: int = 0, last_automation_index: int = 0):
     """Step 3: Real-time log streaming for both Scanner and Automation terminals."""
     # Ensure session exists or return empty
     if session_id not in terminal_sessions:
@@ -1452,7 +1380,8 @@ def get_terminal_stream(session_id: str, last_scanner_index: int = 0, last_autom
                 "automation_logs": [], 
                 "status": "IDLE", 
                 "last_index_scanner": 0,
-                "last_index_automation": 0
+                "last_index_automation": 0,
+                "found_count": 0
             }
         else:
             return {
