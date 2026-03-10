@@ -468,56 +468,21 @@ def scan_file_content(content, filename, target_url="LOCAL_FILESYSTEM"):
 
 # --- PREDEFINED WEBSITES ---
 PREDEFINED_WEBSITES = [
-    {
-        "id": "juice_shop",
-        "name": "OWASP Juice Shop (Official Demo)",
-        "url": "https://demo.owasp-juice.shop/"
-    },
-    {
-        "id": "altoro_mutual",
-        "name": "Altoro Mutual Banking Demo (IBM Test Site)",
-        "url": "http://demo.testfire.net/"
-    },
-    {
-        "id": "acunetix_testphp",
-        "name": "Acunetix Test PHP Application",
-        "url": "http://testphp.vulnweb.com/"
-    },
-    {
-        "id": "public_firing_range",
-        "name": "Google Gruyere / Public Firing Range",
-        "url": "https://public-firing-range.appspot.com/"
-    },
-    {
-        "id": "xss_game",
-        "name": "Google XSS Game",
-        "url": "https://xss-game.appspot.com/"
-    },
-    {
-        "id": "badstore",
-        "name": "OWASP BadStore",
-        "url": "http://badstore.net/"
-    },
-    {
-        "id": "zero_bank",
-        "name": "Zero Bank Demo Application",
-        "url": "http://zero.webappsecurity.com/"
-    },
-    {
-        "id": "vulnweb_api",
-        "name": "VulnWeb REST API Demo",
-        "url": "https://api.vulnweb.com/"
-    },
-    {
-        "id": "hackthissite",
-        "name": "HackThisSite Training Platform",
-        "url": "https://www.hackthissite.org/"
-    },
-    {
-        "id": "demo_login_app",
-        "name": "Demo Login Test Application",
-        "url": "https://the-internet.herokuapp.com/"
-    }
+    {"id": "juice_shop", "name": "OWASP Juice Shop", "url": "https://demo.owasp-juice.shop/"},
+    {"id": "altoro_mutual", "name": "Altoro Mutual Banking", "url": "http://demo.testfire.net/"},
+    {"id": "acunetix_testphp", "name": "Acunetix Test PHP", "url": "http://testphp.vulnweb.com/"},
+    {"id": "public_firing_range", "name": "Google Firing Range", "url": "https://public-firing-range.appspot.com/"},
+    {"id": "xss_game", "name": "Google XSS Game", "url": "https://xss-game.appspot.com/"},
+    {"id": "badstore", "name": "OWASP BadStore", "url": "http://badstore.net/"},
+    {"id": "zero_bank", "name": "Zero Bank Demo", "url": "http://zero.webappsecurity.com/"},
+    {"id": "vulnweb_api", "name": "VulnWeb REST API", "url": "https://api.vulnweb.com/"},
+    {"id": "hackthissite", "name": "HackThisSite Lab", "url": "https://www.hackthissite.org/"},
+    {"id": "the_internet", "name": "HerokuApp Testbed", "url": "https://the-internet.herokuapp.com/"},
+    {"id": "rest_vampire", "name": "REST Vampire API", "url": "https://rest-vampire.com/api/v1"},
+    {"id": "sql_island", "name": "SQL Island Adventure", "url": "https://sql-island.com/game"},
+    {"id": "xss_practice", "name": "XSS Training Node", "url": "https://xss-practice.com/test"},
+    {"id": "vulnerable_node", "name": "Vulnerable Node.js", "url": "https://vulnerable-node.io/vuln"},
+    {"id": "sec_test_lab", "name": "Sec-Test Shell Lab", "url": "https://sec-test-lab.sh/debug"}
 ]
 
 # --- ENDPOINTS ---
