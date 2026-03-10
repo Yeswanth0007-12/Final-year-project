@@ -165,19 +165,11 @@
                 class="nav-item w-full text-left px-4 py-3.5 rounded-xl text-slate-400 transition-all duration-300 flex items-center gap-3">
                 <i data-lucide="cpu" class="w-4 h-4"></i> System Core
             </button>
-            <button onclick="router.go('compliance')" id="btn-compliance"
-                class="nav-item w-full text-left px-4 py-3.5 rounded-xl text-slate-400 transition-all duration-300 flex items-center gap-3">
-                <i data-lucide="clipboard-check" class="w-4 h-4"></i> Compliance
-            </button>
             <button onclick="router.go('feedback')" id="btn-feedback"
                 class="nav-item w-full text-left px-4 py-3.5 rounded-xl text-slate-400 transition-all duration-300 flex items-center gap-3">
                 <i data-lucide="message-square" class="w-4 h-4"></i> Feedback
             </button>
             <div class="my-4 h-px bg-slate-800/30"></div>
-            <button onclick="router.go('terminal')" id="btn-terminal"
-                class="nav-item w-full text-left px-4 py-3.5 rounded-xl text-slate-400 transition-all duration-300 flex items-center gap-3">
-                <i data-lucide="terminal" class="w-4 h-4"></i> Terminal
-            </button>
             <button onclick="router.go('website-scanner')" id="btn-website-scanner"
                 class="nav-item w-full text-left px-4 py-3.5 rounded-xl text-slate-400 transition-all duration-300 flex items-center gap-3">
                 <i data-lucide="globe" class="w-4 h-4"></i> Website Scanner
@@ -384,7 +376,6 @@
                     'patch-lab': 'Patch Lab',
                     'decision-tree': 'Decision Tree',
                     'system-core': 'System Core',
-                    'compliance': 'Compliance',
                     'feedback': 'Feedback',
                     'terminal': 'Terminal',
                     'website-scanner': 'Website Scanner'
@@ -557,7 +548,6 @@
                         else if (page === 'patch-lab') this.renderPatchLab(viewport);
                         else if (page === 'decision-tree') this.renderTree(viewport);
                         else if (page === 'system-core') this.renderSystem(viewport);
-                        else if (page === 'compliance') this.renderCompliance(viewport);
                         else if (page === 'feedback') this.renderFeedback(viewport);
                         else if (page === 'terminal') this.renderTerminal(viewport);
                         else if (page === 'website-scanner') this.renderWebsiteScanner(viewport);
@@ -576,10 +566,8 @@
                     // Targeted Dynamic Updates
                     if (page === 'dashboard') this.updateDashboardDynamic(viewport);
                     else if (page === 'vulnerabilities') this.updateVulnsDynamic(viewport);
-                    else if (page === 'terminal') this.updateTerminalLogs();
                     else if (page === 'decision-tree') this.updateTreeDynamic(viewport);
                     else if (page === 'system-core') this.updateSystemDynamic(viewport);
-                    else if (page === 'compliance') this.updateComplianceDynamic(viewport);
                     else if (page === 'patch-lab') this.updatePatchLabDynamic(viewport);
                     else if (page === 'website-scanner') {
                         this.updateWebsiteScannerDynamic(viewport);
@@ -1110,340 +1098,199 @@
 
             updateVulnsDynamic(el) {
                 try {
-                    const tbody = el.querySelector('tbody');
+                    const tbody = el.querySelector('#integrated-vulns-tbody');
                     if (!tbody) return;
-
-                    // Always show ALL vulnerabilities regardless of status
                     const allVulns = Array.isArray(pipelineState.vulnerabilities) ? pipelineState.vulnerabilities : [];
-                    if (allVulns.length === 0) return;
-
                     const stateHash = allVulns.map(v => (v.id || 'err') + '-' + (v.status || 'null')).join('|');
-
                     if (tbody.getAttribute('data-render-hash') !== stateHash) {
-                        const rows = allVulns.map(v => `
-                    <tr class="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
-                        <td class="p-6 font-mono text-[11px] text-blue-500 font-bold tracking-wider">${v.id}</td>
-                        <td class="p-6">
-                            <div class="text-white font-black text-sm mb-1 tracking-tight italic">${v.vulnerability_type}</div>
-                            <div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${v.website_name}</div>
-                        </td>
-                        <td class="p-6">
-                            <span class="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-rose-500/10 text-rose-500 border border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.1)]">
-                                <i data-lucide="shield-alert" class="w-2.5 h-2.5 mr-1.5"></i> ${v.severity}
-                            </span>
-                        </td>
-                        <td class="p-6">
-                            <div class="font-mono text-slate-400 text-[11px] bg-black/40 px-3 py-2 rounded-xl border border-white/5 truncate max-w-[200px]" title="${v.url}">
-                                ${v.url || 'LOCAL KERNEL'}
-                            </div>
-                        </td>
-                        <td class="p-6">
-                            <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${v.status === 'FIXED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]' :
-                                ['QUEUED_FOR_PATCH', 'PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(v.status) ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
-                                    v.status === 'FAILED' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
-                                        'bg-slate-800/40 text-slate-400 border border-white/10'
-                            }">
-                                ${(v.status || 'UNKNOWN').replace(/_/g, ' ')}
-                            </span>
-                        </td>
-                        <td class="p-6 text-right">
-                            <div class="flex items-center justify-end gap-3">
-                                <button onclick="app.showIntelligenceHUD('${v.id}')" 
-                                        class="p-2 rounded-xl bg-blue-500/10 hover:bg-blue-600 border border-blue-500/20 hover:border-blue-400 text-blue-400 hover:text-white transition-all shadow-lg group-hover:scale-110 active:scale-90"
-                                        title="Technical Intelligence Analysis">
-                                    <i data-lucide="brain-circuit" class="w-4 h-4"></i>
-                                </button>
-                                <button onclick="pipelineState.activeVulnId = '${v.id}'; router.go('patch-lab')" 
-                                        class="p-2 rounded-xl bg-white/5 hover:bg-blue-600 border border-white/10 hover:border-blue-400 text-slate-400 hover:text-white transition-all shadow-lg group-hover:scale-110">
-                                    <i data-lucide="eye" class="w-4 h-4"></i>
-                                </button>
-                                <button onclick="app.submitFeedback('${v.id}')" 
-                                        class="p-2 rounded-xl bg-white/5 hover:bg-emerald-600 border border-white/10 hover:border-emerald-400 text-slate-400 hover:text-white transition-all shadow-lg group-hover:scale-110">
-                                    <i data-lucide="message-square" class="w-4 h-4"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                `).join('');
-
-
-
-                        tbody.innerHTML = rows;
+                        const rows = allVulns.map(v => {
+                            const statusStr = v.status || 'UNKNOWN';
+                            const isFixed = statusStr === 'FIXED';
+                            const isPatching = ['QUEUED_FOR_PATCH', 'PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(statusStr);
+                            const statusColor = isFixed ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' :
+                                isPatching ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse' :
+                                'bg-slate-800/40 text-slate-400 border border-white/10';
+                            
+                            return `
+                            <tr class="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
+                                <td class="p-6 font-mono text-[11px] text-blue-500 font-bold tracking-wider">${v.id || 'N/A'}</td>
+                                <td class="p-6">
+                                    <div class="text-white font-black text-sm mb-1 tracking-tight italic">${v.vulnerability_type || 'Unknown Vector'}</div>
+                                    <div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${v.website_name || 'System Target'}</div>
+                                </td>
+                                <td class="p-6">
+                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-rose-500/10 text-rose-500 border border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.1)]">
+                                        <i data-lucide="shield-alert" class="w-2.5 h-2.5 mr-1.5"></i> ${v.severity || 'UNKNOWN'}
+                                    </span>
+                                </td>
+                                <td class="p-6 font-mono text-slate-400 text-[11px] truncate max-w-[200px]">${v.url || 'LOCAL KERNEL'}</td>
+                                <td class="p-6">
+                                    <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${statusColor}">
+                                        ${statusStr.replace(/_/g, ' ')}
+                                    </span>
+                                </td>
+                                <td class="p-6 text-right">
+                                    <button onclick="pipelineState.activeVulnId = '${v.id}'; router.go('patch-lab')" class="p-2 rounded-xl bg-white/5 text-slate-400 transition-all shadow-lg hover:scale-110">
+                                        <i data-lucide="eye" class="w-4 h-4"></i>
+                                    </button>
+                                </td>
+                            </tr>`;
+                        }).join('');
+                        tbody.innerHTML = rows || '<tr><td colspan="6" class="p-20 text-center opacity-50">_ Awaiting Data...</td></tr>';
                         tbody.setAttribute('data-render-hash', stateHash);
                         lucide.createIcons();
                     }
-                } catch (e) { console.error("Vuln Render Err:", e); }
+                    this.updateIntegratedTerminals();
+                } catch (e) { console.error("Vuln Update Err:", e); }
+            },
+
+            updateIntegratedTerminals() {
+                const scannerBody = document.getElementById('integrated-scanner-body');
+                const kernelBody = document.getElementById('integrated-kernel-body');
+                if (!scannerBody || !kernelBody) return;
+                
+                const renderLogs = (body, logs, mode) => {
+                    if (!logs || !Array.isArray(logs)) return;
+                    if (!app.integratedRenderedIndices) app.integratedRenderedIndices = {};
+                    if (typeof app.integratedRenderedIndices[mode] === 'undefined') app.integratedRenderedIndices[mode] = 0;
+                    
+                    const currentIndex = app.integratedRenderedIndices[mode];
+                    const unrendered = logs.slice(currentIndex);
+                    
+                    if (currentIndex > logs.length) {
+                        body.innerHTML = '';
+                        app.integratedRenderedIndices[mode] = 0;
+                    }
+                    
+                    if (unrendered.length > 0) {
+                        if (body.querySelector('.animate-pulse')) body.innerHTML = '';
+                        const html = unrendered.map(log => {
+                            const level = log.level || 'INFO';
+                            const msg = (log.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            let color = 'text-emerald-400';
+                            if (level === 'WARNING') color = 'text-amber-400';
+                            if (level === 'ERROR') color = 'text-rose-500';
+                            if (level === 'SUCCESS') color = 'text-blue-400';
+                            return `<div class="mb-1 font-mono text-[10px] flex gap-2">
+                                <span class="text-slate-700 font-bold">[${log.timestamp || ''}]</span>
+                                <span class="${color}">${msg}</span>
+                            </div>`;
+                        }).join('');
+                        body.insertAdjacentHTML('beforeend', html);
+                        app.integratedRenderedIndices[mode] = logs.length;
+                        body.scrollTop = body.scrollHeight;
+                    } else if (logs.length === 0 && !body.innerHTML.trim()) {
+                         body.innerHTML = `<div class="text-slate-700 animate-pulse font-bold tracking-widest text-[10px]">_ Awaiting ${mode} feed...</div>`;
+                    }
+                };
+                renderLogs(scannerBody, pipelineState.terminalLogs, 'scanner');
+                renderLogs(kernelBody, pipelineState.pipelineLogs, 'kernel');
             },
 
             updateWebsiteScannerDynamic(el) {
-                // Keep the "Executive Scan" button in sync with engine status
-                const btn = document.querySelector('button[onclick*="executiveScan"]');
-                if (btn) {
-                    const isScanning = pipelineState.scanStatus === 'RUNNING';
-                    const currentState = btn.getAttribute('data-scanning-state');
-                    const newState = isScanning ? 'true' : 'false';
-                    
-                    if (currentState !== newState) {
-                        if (isScanning) {
-                            btn.innerHTML = '<i data-lucide="refresh-cw" class="w-6 h-6 animate-spin"></i> SCANNING IN PROGRESS...';
-                            btn.disabled = true;
-                            btn.classList.add('opacity-50', 'animate-pulse');
-                        } else {
-                            btn.innerHTML = '<i data-lucide="shield-alert" class="w-6 h-6 animate-pulse"></i> RUN EXECUTIVE PROTOCOL';
-                            btn.disabled = false;
-                            btn.classList.remove('opacity-50', 'animate-pulse');
-                        }
-                        btn.setAttribute('data-scanning-state', newState);
-                        lucide.createIcons();
-                    }
-                }
-
-                // If on website-scanner and sites list is empty, refresh it occasionally
-                const container = el.querySelector('.grid.grid-cols-2.gap-8.mt-12') || el.querySelector('.grid.grid-cols-3.gap-8');
-                if (container) {
-                    const sites = pipelineState.availableWebsites || [];
-                    const hash = sites.map(s => s.id).join(',');
-                    if (container.getAttribute('data-render-hash') !== hash) {
-                        this.renderWebsiteScanner(el); // Just re-render the whole tab if list changed
-                        const newContainer = el.querySelector('.grid.grid-cols-2.gap-8.mt-12') || el.querySelector('.grid.grid-cols-3.gap-8');
-                        if (newContainer) newContainer.setAttribute('data-render-hash', hash);
-                    }
-                }
-            },
-
-            smartUpdate() {
-                this.render(true);
-            },
-
-            updateTreeDynamic(el) {
-                const stateHash = pipelineState.vulnerabilities.map(v => v.id + v.status).join('|');
-                if (el.getAttribute('data-render-hash') !== stateHash) {
-                    this.renderTree(el);
-                    el.setAttribute('data-render-hash', stateHash);
-                }
-            },
-
-            updateSystemDynamic(el) {
-                const s = pipelineState.systemCore || {};
-                const stateHash = `${s.engine_accuracy}|${s.current_risk_score}|${s.validated_count}|${s.patched_count}|${s.total_scans}|${s.total_vulnerabilities}`;
-                if (el.getAttribute('data-render-hash') !== stateHash) {
-                    this.renderSystem(el);
-                    el.setAttribute('data-render-hash', stateHash);
-                }
-            },
-
-            updateComplianceDynamic(el) {
-                const c = pipelineState.complianceData || {};
-                const stateHash = `${c.total_fixed}|${Object.keys(c.fix_breakdown_by_type || {}).join(',')}|${c.history ? c.history.length : 0}|${Object.keys(c.severity_breakdown || {}).join(',')}`;
-                if (el.getAttribute('data-render-hash') !== stateHash) {
-                    this.renderCompliance(el);
-                    el.setAttribute('data-render-hash', stateHash);
+                const sites = pipelineState.availableWebsites || [];
+                const hash = (sites || []).map(s => s.id + (s.status || '')).join(',');
+                if (el.getAttribute('data-render-hash') !== hash) {
+                    this.renderWebsiteScanner(el);
+                    el.setAttribute('data-render-hash', hash);
                 }
             },
 
             renderVulns(el) {
                 try {
-                    // Show ALL vulnerabilities regardless of status safely
                     const allVulns = pipelineState.vulnerabilities || [];
                     const rows = allVulns.map(v => {
-                        if (!v) return '';
                         const statusStr = v.status || 'UNKNOWN';
                         const isFixed = statusStr === 'FIXED';
                         const isPatching = ['QUEUED_FOR_PATCH', 'PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(statusStr);
-                        const statusColor = isFixed ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]' :
-                            isPatching ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
-                                statusStr === 'FAILED' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
-                                    'bg-slate-800/40 text-slate-400 border border-white/10';
+                        const statusColor = isFixed ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30' :
+                            isPatching ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse' :
+                            'bg-slate-800/40 text-slate-400 border border-white/10';
 
                         return `
-                <tr class="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
-                    <td class="p-6 font-mono text-[11px] text-blue-500 font-bold tracking-wider">${v.id || 'N/A'}</td>
-                    <td class="p-6">
-                        <div class="text-white font-black text-sm mb-1 tracking-tight italic">${v.vulnerability_type || 'Unknown Vector'}</div>
-                        <div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${v.website_name || 'System Target'}</div>
-                    </td>
-                    <td class="p-6">
-                        <span class="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-rose-500/10 text-rose-500 border border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.1)]">
-                            <i data-lucide="shield-alert" class="w-2.5 h-2.5 mr-1.5"></i> ${v.severity || 'UNKNOWN'}
-                        </span>
-                    </td>
-                    <td class="p-6">
-                    <div class="flex items-center gap-2 group/copy">
-                        <div class="font-mono text-slate-400 text-[11px] bg-black/40 px-3 py-2 rounded-xl border border-white/5 truncate max-w-[200px]" title="${v.url || ''}">
-                            ${v.url || 'LOCAL KERNEL'}
-                        </div>
-                        ${v.url ? `<button onclick="app.copyToClipboard('${v.url}')" class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-500 hover:text-white transition-colors opacity-0 group-hover/copy:opacity-100" title="Copy URL"><i data-lucide="copy" class="w-3 h-3"></i></button>` : ''}
-                    </div>
-                </td>
-                    <td class="p-6">
-                        <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${statusColor}">
-                            ${statusStr.replace(/_/g, ' ')}
-                        </span>
-                    </td>
-                    <td class="p-6 text-right">
-                        <div class="flex items-center justify-end gap-3">
-                            <button onclick="app.showIntelligenceHUD('${v.id}')" 
-                                    class="p-2 rounded-xl bg-blue-500/10 hover:bg-blue-600 border border-blue-500/20 hover:border-blue-400 text-blue-400 hover:text-white transition-all shadow-lg group-hover:scale-110 active:scale-90"
-                                    title="Technical Intelligence Analysis">
-                                <i data-lucide="brain-circuit" class="w-4 h-4"></i>
-                            </button>
-                            <button onclick="pipelineState.activeVulnId = '${v.id}'; router.go('patch-lab')" 
-                                    class="p-2 rounded-xl bg-white/5 hover:bg-blue-600 border border-white/10 hover:border-blue-400 text-slate-400 hover:text-white transition-all shadow-lg group-hover:scale-110">
-                                <i data-lucide="eye" class="w-4 h-4"></i>
-                            </button>
-                            <button onclick="app.submitFeedback('${v.id}')" 
-                                    class="p-2 rounded-xl bg-white/5 hover:bg-emerald-600 border border-white/10 hover:border-emerald-400 text-slate-400 hover:text-white transition-all shadow-lg group-hover:scale-110">
-                                <i data-lucide="message-square" class="w-4 h-4"></i>
-                            </button>
-                        </div>
-                    </td>
-                </tr>
-                `}).join('');
-
+                        <tr class="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
+                            <td class="p-6 font-mono text-[11px] text-blue-500 font-bold tracking-wider">${v.id || 'N/A'}</td>
+                            <td class="p-6">
+                                <div class="text-white font-black text-sm mb-1 tracking-tight italic">${v.vulnerability_type || 'Unknown Vector'}</div>
+                                <div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${v.website_name || 'System Target'}</div>
+                            </td>
+                            <td class="p-6">
+                                <span class="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-rose-500/10 text-rose-500 border border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.1)]">
+                                    <i data-lucide="shield-alert" class="w-2.5 h-2.5 mr-1.5"></i> ${v.severity || 'UNKNOWN'}
+                                </span>
+                            </td>
+                            <td class="p-6 font-mono text-slate-400 text-[11px] truncate max-w-[200px]">${v.url || 'LOCAL KERNEL'}</td>
+                            <td class="p-6">
+                                <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${statusColor}">
+                                    ${statusStr.replace(/_/g, ' ')}
+                                </span>
+                            </td>
+                            <td class="p-6 text-right">
+                                <button onclick="pipelineState.activeVulnId = '${v.id}'; router.go('patch-lab')" class="p-2 rounded-xl bg-white/5 text-slate-400 transition-all shadow-lg hover:scale-110">
+                                    <i data-lucide="eye" class="w-4 h-4"></i>
+                                </button>
+                            </td>
+                        </tr>`;
+                    }).join('');
                     el.innerHTML = `
-                <div class="glass rounded-[35px] overflow-hidden border border-white/10 shadow-3xl bg-[#020617]/40 backdrop-blur-3xl">
-                    <div class="p-8 border-b border-white/5 flex justify-between items-center bg-gradient-to-r from-blue-900/10 to-transparent">
-                        <div>
-                            <h3 class="text-2xl font-black text-white tracking-tight uppercase italic mb-1">Threat Vector Spectrum</h3>
-                            <p class="text-[10px] text-slate-500 font-bold tracking-[0.3em] uppercase opacity-70">Live remediation kernel synchronization active</p>
-                        </div>
-                        <div class="flex gap-4">
-                            <div class="px-4 py-2 rounded-2xl bg-black/40 border border-white/5 flex items-center gap-2">
-                                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                                <span class="text-[10px] font-black text-slate-400 tracking-widest uppercase">Kernel Online</span>
+                        <div class="flex flex-col gap-8 h-full">
+                            <div class="glass rounded-[35px] overflow-hidden border border-white/10 bg-[#020617]/40 flex flex-col max-h-[60%]">
+                                <div class="p-8 border-b border-white/5 flex justify-between items-center bg-gradient-to-r from-blue-900/10 to-transparent">
+                                    <h3 class="text-2xl font-black text-white italic tracking-tight">Vulnerability Pipeline</h3>
+                                    <span class="text-[10px] font-black text-emerald-400 tracking-widest">LIVE REMEDIATION ACTIVE</span>
+                                </div>
+                                <div class="overflow-y-auto custom-scrollbar flex-1">
+                                    <table class="w-full text-left">
+                                        <thead class="bg-black/60 text-[11px] text-slate-500 uppercase font-black tracking-widest border-b border-white/5 sticky top-0">
+                                            <tr><th class="p-8">ID</th><th class="p-8">Vector</th><th class="p-8">Crit</th><th class="p-8">Source</th><th class="p-8">Status</th><th class="p-8 text-right">Directives</th></tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-white/[0.03] text-sm" id="integrated-vulns-tbody">${rows || '<tr><td colspan="6" class="p-20 text-center opacity-50">_ Awaiting Data...</td></tr>'}</tbody>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left border-collapse">
-                            <thead class="bg-black/60 text-[11px] text-slate-500 uppercase font-black tracking-[0.4em] border-b border-white/5">
-                                <tr>
-                                    <th class="p-8">Registry ID</th>
-                                    <th class="p-8">Vector Signature</th>
-                                    <th class="p-8">Criticality</th>
-                                    <th class="p-8">Logical Source</th>
-                                    <th class="p-8">Kernel Status</th>
-                                    <th class="p-8 text-right">Directives</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-white/[0.03] text-sm">${rows || '<tr><td colspan="6" class="p-40 text-center text-slate-700 font-black tracking-[0.5em] italic uppercase opacity-50 animate-pulse">_ Awaiting neural scan data...</td></tr>'}</tbody>
-                        </table>
-            </div>
-        </div>
-    </div>`;
+                            <div class="grid grid-cols-2 gap-8 flex-1 min-h-[300px]">
+                                <div class="glass rounded-3xl border border-white/5 flex flex-col bg-black/40 overflow-hidden">
+                                     <div class="px-6 py-3 border-b border-white/5 bg-white/5 text-[10px] font-black text-blue-400 tracking-widest font-mono uppercase">SCANNER LOGS</div>
+                                     <div id="integrated-scanner-body" class="flex-1 p-6 font-mono overflow-y-auto custom-scrollbar bg-black/20 text-[10px]"></div>
+                                </div>
+                                <div class="glass rounded-3xl border border-white/5 flex flex-col bg-black/40 overflow-hidden">
+                                     <div class="px-6 py-3 border-b border-white/5 bg-white/5 text-[10px] font-black text-emerald-400 tracking-widest font-mono uppercase">KERNEL LOGS</div>
+                                     <div id="integrated-kernel-body" class="flex-1 p-6 font-mono overflow-y-auto custom-scrollbar bg-black/20 text-[10px]"></div>
+                                </div>
+                            </div>
+                        </div>`;
+                    lucide.createIcons();
+                    this.updateIntegratedTerminals();
                 } catch (e) { console.error("Vuln Tab Crash:", e); }
             },
+
             renderPatchLab(el) {
                 try {
-                    const patches = (pipelineState.vulnerabilities || []).filter(v =>
-                        ['PATCH_APPLIED', 'VALIDATING', 'FIXED'].includes(v.status)
-                    );
-
+                    const patches = (pipelineState.vulnerabilities || []).filter(v => ['PATCH_APPLIED', 'VALIDATING', 'FIXED'].includes(v.status));
                     const v = patches.find(i => i.id === pipelineState.activeVulnId) || (patches.length > 0 ? patches[0] : null);
-
                     if (!v) {
-                        el.innerHTML = `
-                        <div class="flex flex-col items-center justify-center h-full text-center p-20 glass rounded-[40px] border-dashed border-2 border-white/10">
-                            <div class="w-24 h-24 rounded-full bg-blue-500/10 flex items-center justify-center mb-8 animate-pulse">
-                                <i data-lucide="wrench" class="w-10 h-10 text-blue-500"></i>
-                            </div>
-                            <h3 class="text-2xl font-black text-white mb-2 uppercase italic tracking-tight">Patch Lab Empty</h3>
-                            <p class="text-slate-500 text-sm max-w-md mx-auto leading-relaxed">The automation kernel hasn't generated any validated patches yet. Start an <b>Executive Scan</b> to populate the remediation pipeline.</p>
-                            <button onclick="router.go('website-scanner')" class="mt-8 px-8 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-bold transition-all shadow-lg hover:shadow-blue-500/30 active:scale-95 flex items-center gap-2">
-                                <i data-lucide="zap" class="w-4 h-4"></i> Initialize Scanner
-                            </button>
-                        </div>
-                    `;
-                        lucide.createIcons();
+                        el.innerHTML = `<div class="p-20 h-full flex items-center justify-center opacity-50 uppercase tracking-widest font-black text-sm">_ Awaiting Patch Data...</div>`;
                         return;
                     }
-
-                    if (v.id !== pipelineState.activeVulnId) {
-                        pipelineState.activeVulnId = v.id;
-                    }
-
-                    // Handle diff display - show proper message if not generated yet
-                    let diffContent = v.diff;
-                    if (!diffContent || diffContent.trim() === '' || diffContent === 'null') {
-                        if (v.status === 'DETECTED') {
-                            diffContent = '// Click "Generate Patch" in the Vulnerabilities tab first\n// to see the proposed fix here.';
-                        } else if (v.status === 'PATCHED') {
-                            diffContent = v.suggested_fix || '// Patch generated but diff not available\n// You can still validate this fix.';
-                        } else {
-                            diffContent = '// No patch data available';
-                        }
-                    }
-
-                    const statusStr = v.status || '';
-
                     el.innerHTML = `
-                <div class="flex flex-col h-full">
-                    <div class="mb-6 flex justify-between items-end">
-                        <div class="glass p-6 rounded-2xl border-l-4 border-emerald-500 bg-black/40 inline-block">
-                            <h3 class="text-2xl font-black text-white mb-1 tracking-tight">Remediation Analysis</h3>
-                            <p class="text-slate-400 text-xs">Review AI-proposed patch for threat <span class="text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded tracking-widest">${v.id || ''}</span></p>
-                        </div>
-                    </div>
-                    
-                    <div class="grid grid-cols-2 gap-8 flex-1">
-                        <div class="glass rounded-3xl p-6 flex flex-col border border-rose-500/20 shadow-[0_10px_40px_-15px_rgba(244,63,94,0.2)] relative overflow-hidden">
-                            <div class="absolute top-0 right-0 w-64 h-64 bg-rose-500/5 blur-3xl rounded-full pointer-events-none"></div>
-                            <div class="text-[10px] font-black tracking-[0.2em] text-rose-500 mb-4 uppercase flex justify-between items-center relative z-10 border-b border-rose-500/10 pb-4">
-                                <span class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"></div> Vulnerable Structure</span> 
-                                <span class="bg-rose-500/10 px-3 py-1 rounded shadow-sm text-rose-400">Risk Profile: ${v.risk_score || 0}/10</span>
-                            </div>
-                            <div class="text-[11px] text-slate-500 mb-4 space-y-2 relative z-10 bg-black/20 p-4 rounded-xl font-mono tracking-wider">
-                                <div class="flex items-center justify-between group">
-                                    <span><span class="text-slate-600 uppercase tracking-widest text-[9px]">Target:</span> <span class="text-blue-400">${v.url || 'LOCAL'}</span></span>
+                        <div class="glass p-8 rounded-[40px] border border-white/10 h-full flex flex-col">
+                            <h3 class="text-2xl font-black text-white italic mb-6">Remediation Analysis: ${v.id}</h3>
+                            <div class="grid grid-cols-2 gap-8 flex-1 overflow-hidden">
+                                <div class="bg-black/60 p-6 rounded-3xl border border-rose-500/20 flex flex-col">
+                                    <div class="text-rose-500 text-[10px] font-black mb-4 uppercase font-mono tracking-widest">VULNERABLE CODE</div>
+                                    <pre class="flex-1 overflow-auto text-rose-200 text-xs font-mono">${(v.code_snippet || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
                                 </div>
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">File:</span> <span class="text-slate-300 font-bold">${v.website_name || ''}</span></div>
-                                    <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">Line:</span> <span class="text-rose-400 font-bold">${v.line_number || 0}</span></div>
+                                <div class="bg-black/60 p-6 rounded-3xl border border-emerald-500/20 flex flex-col">
+                                    <div class="text-emerald-500 text-[10px] font-black mb-4 uppercase font-mono tracking-widest">STABILIZED PATCH</div>
+                                    <pre class="flex-1 overflow-auto text-emerald-200 text-xs font-mono">${(v.diff || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
                                 </div>
                             </div>
-                            <div class="bg-black/80 p-5 rounded-2xl border border-white/5 relative flex-1 flex flex-col shadow-inner z-10 overflow-hidden group">
-                                <div class="absolute left-0 top-0 bottom-0 w-8 bg-slate-900 border-r border-white/5 flex flex-col items-center pt-5 text-[9px] text-slate-600 font-mono">
-                                    <span>1</span><span>2</span><span>3</span>
-                                </div>
-                                <pre class="text-rose-200 font-mono text-[11px] leading-relaxed overflow-auto flex-1 pl-10 pr-2">${(v.code_snippet || '// No code snippet available').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
-                            </div>
-                        </div>
-                        
-                        <div class="glass rounded-3xl p-6 flex flex-col border border-emerald-500/30 shadow-[0_10px_40px_-15px_rgba(16,185,129,0.2)] relative overflow-hidden">
-                            <div class="absolute top-0 left-0 w-64 h-64 bg-emerald-500/5 blur-3xl rounded-full pointer-events-none"></div>
-                            <div class="text-[10px] font-black tracking-[0.2em] text-emerald-400 mb-4 uppercase flex justify-between items-center relative z-10 border-b border-emerald-500/10 pb-4">
-                                <span class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div> Secure Infusion</span> 
-                                <span class="bg-emerald-500/10 px-3 py-1 rounded shadow-sm text-emerald-400">Confidence: ${Math.round((v.decision_score || 0.98) * 100)}%</span>
-                            </div>
-                            <div class="text-[11px] text-slate-400 mb-4 flex gap-6 relative z-10 bg-black/20 p-4 rounded-xl font-mono tracking-wider">
-                                <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">Vector:</span> <span class="text-emerald-400 font-bold ml-1">${v.vulnerability_type || ''}</span></div>
-                                <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">Class:</span> <span class="text-amber-400 font-bold ml-1">${v.severity || ''}</span></div>
-                            </div>
-                            <div class="bg-black/80 p-5 rounded-2xl border border-white/5 relative flex-1 flex flex-col shadow-inner z-10 overflow-hidden">
-                                <pre class="text-emerald-300 font-mono text-[11px] leading-relaxed overflow-auto flex-1">${(diffContent || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
-                            </div>
-                            
-                            <div class="mt-6 flex relative z-10">
-                                ${statusStr === 'FIXED' ?
-                            '<div class="px-6 py-4 w-full text-center text-emerald-400 tracking-[0.2em] text-[10px] font-black border border-emerald-500/50 rounded-xl bg-emerald-900/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]">✓ SECURE DEPLOYMENT VALIDATED</div>' :
-                            statusStr === 'FAILED' ?
-                                '<div class="px-6 py-4 w-full text-center text-rose-500 tracking-[0.2em] text-[10px] font-black border border-rose-500/50 rounded-xl bg-rose-900/30 shadow-[0_0_20px_rgba(244,63,94,0.2)]">⚠ AUTOMATION KERNEL PANIC</div>' :
-                                `<div class="px-6 py-4 w-full text-center text-blue-400 tracking-[0.2em] text-[10px] font-black border border-blue-500/50 rounded-xl bg-blue-900/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]">⚙ GENERATING LOGIC PATCH...</div>`
-                        }
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-                } catch (e) {
-                    console.error("Patch Lab Exception:", e);
-                }
+                        </div>`;
+                } catch(e) { console.error("Patch Lab Render Err:", e); }
             },
 
             updatePatchLabDynamic(el) {
-                const patches = (pipelineState.vulnerabilities || []).filter(v =>
-                    ['PATCH_APPLIED', 'VALIDATING', 'FIXED'].includes(v.status)
-                );
+                const patches = (pipelineState.vulnerabilities || []).filter(v => ['PATCH_APPLIED', 'VALIDATING', 'FIXED'].includes(v.status));
                 const v = patches.find(i => i.id === pipelineState.activeVulnId) || (patches.length > 0 ? patches[0] : null);
                 const hash = v ? `${v.id}-${v.status}` : 'empty';
                 if (el.getAttribute('data-render-hash') !== hash) {
@@ -1454,538 +1301,249 @@
 
             renderTree(el) {
                 try {
-                    const vulns = (pipelineState.vulnerabilities || []).filter(v => v && ['QUEUED_FOR_PATCH', 'PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING', 'FIXED', 'VALIDATED'].includes(v.status || ''));
-
+                    const vulns = (pipelineState.vulnerabilities || []).filter(v => v && ['FIXED', 'VALIDATED'].includes(v.status));
                     if (vulns.length === 0) {
-                        el.innerHTML = `
-                    <div class="flex flex-col items-center justify-center h-full text-center">
-                        <div class="w-32 h-32 rounded-full border border-white/5 bg-black/40 flex items-center justify-center mb-6">
-                            <i data-lucide="git-branch" class="w-12 h-12 text-slate-700"></i>
-                        </div>
-                        <h3 class="text-xl font-black text-white/50 tracking-widest uppercase">Awaiting Actionable Data</h3>
-                        <p class="text-xs text-slate-500 mt-2 max-w-sm">The heuristic core requires completed mitigation cycles to extrapolate structural decision paradigms.</p>
-                    </div>`;
-                        lucide.createIcons();
+                        el.innerHTML = `<div class="p-20 text-center opacity-50 uppercase tracking-widest font-black text-sm">_ Awaiting Actionable Data...</div>`;
                         return;
                     }
-
-                    // Get all fixed/validated vulns sorted by most recent
-                    const recentDecisions = vulns.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-
-                    const decisionLogs = recentDecisions.map((v, i) => `
-                    <div class="relative pl-12 pb-10 group ${i === recentDecisions.length - 1 ? '' : 'border-l-2 border-blue-500/20'}">
-                        <div class="absolute left-0 top-0 -translate-x-1/2 w-6 h-6 rounded-full bg-blue-900 border-4 border-black flex items-center justify-center">
-                            <div class="w-2 h-2 rounded-full bg-blue-400 group-hover:bg-emerald-400 group-hover:shadow-[0_0_10px_rgba(52,211,153,1)] transition-all"></div>
+                    const logs = vulns.map(v => `
+                        <div class="glass p-6 rounded-3xl mb-4 border border-blue-500/10 hover:border-blue-400 group transition-all">
+                            <div class="text-blue-400 font-black text-sm mb-2 italic tracking-tight uppercase">${v.vulnerability_type}</div>
+                            <div class="text-slate-500 text-[10px] font-mono leading-relaxed">${v.patch_explanation || 'Stabilization logic successful.'}</div>
                         </div>
-                        <div class="glass p-6 rounded-3xl border border-white/5 bg-black/40 group-hover:border-blue-500/30 transition-all">
-                            <div class="flex justify-between items-start mb-4">
-                                <div>
-                                    <div class="text-[10px] text-blue-400 font-black tracking-[0.2em] uppercase mb-1">Target: ${v.website_name || 'Kernel'}</div>
-                                    <h4 class="text-lg font-black text-white uppercase tracking-tight">${v.vulnerability_type}</h4>
-                                </div>
-                                <div class="text-right">
-                                    <div class="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mb-1">Neural Confidence</div>
-                                    <div class="text-xl font-black text-emerald-400">${Math.round((v.decision_score || 0.98) * 100)}%</div>
-                                </div>
-                            </div>
-                            
-                            <div class="bg-black/60 rounded-xl p-4 border border-white/5 mb-4 font-mono text-xs overflow-x-auto text-slate-400">
-                                <div class="text-[9px] text-rose-500 font-black tracking-widest uppercase mb-2">// Trigger Pattern Deteced</div>
-                                <code>${(v.code_snippet || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>
-                            </div>
-                            
-                            <div class="flex items-center gap-4 p-4 rounded-xl border text-sm ${(v.status || '') === 'FIXED' ? 'bg-emerald-900/10 border-emerald-500/10 text-emerald-400/90' : (v.status || '') === 'FAILED' ? 'bg-rose-900/10 border-rose-500/10 text-rose-400/90' : 'bg-blue-900/10 border-blue-500/10 text-blue-400/90'}">
-                                <i data-lucide="${(v.status || '') === 'FIXED' ? 'check-circle' : (v.status || '') === 'FAILED' ? 'x-circle' : 'refresh-cw'}" class="w-5 h-5 shrink-0 ${['PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(v.status || '') ? 'animate-spin' : ''}"></i>
-                                <span>${v.status === 'PATCH_GENERATING' ? 'Analyzing AST for logic mutation...' :
-                            v.status === 'PATCH_APPLIED' ? 'Synthesizing verified patch injection...' :
-                                v.status === 'VALIDATING' ? 'Running recursive validation context against injected patch...' :
-                                    v.status === 'FAILED' ? 'Automated neural mediation failed. Manual review required.' :
-                                        (v.patch_explanation || 'AST manipulation patch successfully generated and structurally validated.')
-                        }</span>
-                            </div>
-                        </div>
-                    </div>
-                `).join('');
-
-                    el.innerHTML = `
-                <div class="max-w-4xl mx-auto h-full overflow-y-auto pr-6 custom-scrollbar">
-                    <div class="mb-10 sticky top-0 bg-[#050505]/90 backdrop-blur-xl py-6 z-10 border-b border-white/5">
-                        <h3 class="text-3xl font-black text-white tracking-tight italic uppercase decoration-blue-500 decoration-2 underline-offset-8">Neural Decision Paradigms</h3>
-                        <p class="text-slate-500 text-xs font-black tracking-[0.2em] uppercase mt-2">Inference Engine Audit Log</p>
-                    </div>
-                    
-                    <div class="pt-4 ml-6">
-                        ${decisionLogs}
-                    </div>
-                </div>
-                `;
-                    lucide.createIcons();
-                } catch (e) { console.error("Tree render error", e); }
+                    `).join('');
+                    el.innerHTML = `<div class="max-w-4xl mx-auto h-full overflow-y-auto custom-scrollbar">${logs}</div>`;
+                } catch(e) { console.error("Tree Render Err:", e); }
             },
 
             updateTreeDynamic(el) {
-                // Decision tree update mapping
-                const vulns = pipelineState.vulnerabilities;
-                const stateHash = vulns.map(v => v.status).join('|');
+                const stateHash = (pipelineState.vulnerabilities || []).map(v => v.status).join('|');
                 if (el.getAttribute('data-render-hash') !== stateHash) {
                     this.renderTree(el);
                     el.setAttribute('data-render-hash', stateHash);
                 }
             },
 
-            updateComplianceDynamic(el) {
-                // If data changed, we just re-render the whole compliance panel for simplicity since it's heavy
-                const c = pipelineState.complianceData;
-                const stateHash = `${c.total_fixed}-${c.open_count}-${(c.history || []).length}`;
-                if (el.getAttribute('data-render-hash') !== stateHash) {
-                    this.renderCompliance(el);
-                    el.setAttribute('data-render-hash', stateHash);
-                }
-            },
-
-            updateFeedbackDynamic(el) {
-                const f = pipelineState.feedbackData;
-                const stateHash = `${f.total_feedback}-${f.average_rating}`;
-                if (el.getAttribute('data-render-hash') !== stateHash) {
-                    this.renderFeedback(el);
-                    el.setAttribute('data-render-hash', stateHash);
-                }
-            },
-
             renderSystem(el) {
                 const s = pipelineState.systemCore;
-                // Add minor random fluctuation for the visual "alive" effect
-                const baseAccuracy = s.engine_accuracy || 98.5;
-                const fluctuation = (Math.random() * 0.4 - 0.2).toFixed(1);
-                const displayAccuracy = (parseFloat(baseAccuracy) + parseFloat(fluctuation)).toFixed(1);
-
+                const accuracy = s.engine_accuracy || 98.5;
                 const riskScore = s.current_risk_score || 0;
-                const riskColor = riskScore > 50 ? 'red' : riskScore > 20 ? 'amber' : 'emerald';
-
-                // Core pulsation speed based on risk
-                const pulseSpeed = riskScore > 50 ? 'animate-[pulse_0.5s_infinite]' : 'animate-[pulse_2s_infinite]';
-
-                el.innerHTML = `
-                <div class="flex justify-between items-end mb-10">
-                    <div>
-                        <h3 class="text-3xl font-black text-white tracking-tight italic uppercase underline decoration-blue-500 decoration-2 underline-offset-8 mb-4">Core Telemetry</h3>
-                        <p class="text-slate-500 text-xs font-black tracking-[0.2em] uppercase flex items-center gap-2">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 ${pulseSpeed}"></span> System Online & Actively Monitoring
-                        </p>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-3 gap-8 mb-10">
-                    <div class="glass p-10 rounded-3xl text-center border border-blue-500/20 relative overflow-hidden group hover:border-blue-400 transition-all bg-[#0a0f1a]">
-                        <div class="absolute inset-0 bg-blue-600/5 group-hover:bg-blue-600/10 transition-colors"></div>
-                        <div class="absolute -top-10 -right-10 w-32 h-32 bg-blue-500/20 blur-3xl rounded-full"></div>
-                        <div class="text-[11px] text-blue-400 font-black uppercase tracking-[0.2em] mb-4 relative z-10 flex justify-center items-center gap-2">
-                            <i data-lucide="cpu" class="w-4 h-4"></i> Engine Accuracy
-                        </div>
-                        <div class="text-7xl font-black text-white relative z-10 tracking-tighter drop-shadow-[0_0_15px_rgba(59,130,246,0.5)] flex justify-center items-baseline gap-1">
-                            ${displayAccuracy}<span class="text-2xl text-blue-500 font-bold">%</span>
-                        </div>
-                        <div class="mt-8 h-2 bg-black/80 rounded-full overflow-hidden border border-white/5 relative z-10 shadow-inner">
-                            <div class="h-full bg-gradient-to-r from-blue-600 to-cyan-400 rounded-full shadow-[0_0_15px_rgba(34,211,238,0.8)] transition-all duration-1000 ease-out" style="width: ${displayAccuracy}%"></div>
-                        </div>
-                    </div>
-                    
-                    <div class="glass p-10 rounded-3xl text-center border border-${riskColor}-500/20 relative overflow-hidden group hover:border-${riskColor}-400 transition-all bg-[#1a0a0a]">
-                        <div class="absolute inset-0 bg-${riskColor}-500/5 group-hover:bg-${riskColor}-500/10 transition-colors"></div>
-                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none opacity-20 group-hover:opacity-40 transition-opacity">
-                            <div class="w-48 h-48 rounded-full border-2 border-${riskColor}-500 ${pulseSpeed}"></div>
-                        </div>
-                        <div class="text-[11px] text-${riskColor}-400 font-black uppercase tracking-[0.2em] mb-4 relative z-10 flex justify-center items-center gap-2">
-                            <i data-lucide="activity" class="w-4 h-4"></i> Current Risk Level
-                        </div>
-                        <div class="text-7xl font-black text-${riskColor}-400 relative z-10 tracking-tighter filter drop-shadow-[0_0_20px_rgba(var(--color-${riskColor}-500),0.6)]">${riskScore.toFixed(1)}</div>
-                        <div class="mt-6 inline-block px-6 py-2 rounded-2xl border border-${riskColor}-500/40 bg-${riskColor}-900/30 text-xs tracking-widest font-black text-white uppercase relative z-10 shadow-[0_0_15px_rgba(var(--color-${riskColor}-500),0.3)]">${riskScore > 50 ? 'CRITICAL RISK' : riskScore > 20 ? 'MODERATE RISK' : 'SECURE'}</div>
-                    </div>
-                    
-                    <div class="glass p-10 rounded-3xl text-center border border-emerald-500/20 relative overflow-hidden group hover:border-emerald-400 transition-all bg-[#0a1a10]">
-                        <div class="absolute inset-0 bg-emerald-500/5 group-hover:bg-emerald-500/10 transition-colors"></div>
-                        <div class="text-[11px] text-emerald-400 font-black uppercase tracking-[0.2em] mb-4 relative z-10 flex justify-center items-center gap-2">
-                            <i data-lucide="shield-check" class="w-4 h-4"></i> Mitigation Ratio
-                        </div>
-                        <div class="text-7xl font-black text-white relative z-10 tracking-tighter drop-shadow-[0_0_15px_rgba(16,185,129,0.5)]">
-                            ${s.validated_count || 0}<span class="text-3xl text-emerald-600 mx-2">/</span>${s.patched_count || 0}
-                        </div>
-                        <div class="mt-6 flex justify-center gap-2 relative z-10">
-                            <div class="h-1.5 w-12 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)]"></div>
-                            <div class="h-1.5 w-12 rounded-full bg-emerald-500/40"></div>
-                            <div class="h-1.5 w-12 rounded-full bg-emerald-500/20"></div>
-                        </div>
-                    </div>
-                </div>
+                const riskColor = riskScore > 50 ? 'rose' : riskScore > 20 ? 'amber' : 'emerald';
                 
-                <div class="glass p-10 rounded-3xl bg-[#050505] border border-white/5 relative overflow-hidden">
-                    <div class="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-blue-500 to-indigo-600"></div>
-                    <div class="grid grid-cols-3 gap-8 text-center divide-x divide-white/5">
-                        <div class="px-4 group cursor-pointer hover:-translate-y-1 transition-transform">
-                            <div class="text-5xl font-black text-blue-100 tracking-tighter group-hover:text-blue-400 transition-colors">${s.total_scans || 0}</div>
-                            <div class="text-[10px] text-slate-500 font-black tracking-[0.2em] uppercase mt-3 group-hover:text-slate-300 transition-colors">Total Operations</div>
-                        </div>
-                        <div class="px-4 group cursor-pointer hover:-translate-y-1 transition-transform">
-                            <div class="text-5xl font-black text-rose-500 tracking-tighter group-hover:text-rose-400 transition-colors drop-shadow-[0_0_10px_rgba(244,63,94,0.4)]">${s.total_vulnerabilities || 0}</div>
-                            <div class="text-[10px] text-slate-500 font-black tracking-[0.2em] uppercase mt-3 group-hover:text-slate-300 transition-colors">Threats Identified</div>
-                        </div>
-                        <div class="px-4 group cursor-pointer hover:-translate-y-1 transition-transform">
-                            <div class="text-5xl font-black text-emerald-400 tracking-tighter group-hover:text-emerald-300 transition-colors drop-shadow-[0_0_10px_rgba(16,185,129,0.4)]">${s.validated_count || 0}</div>
-                            <div class="text-[10px] text-slate-500 font-black tracking-[0.2em] uppercase mt-3 group-hover:text-slate-300 transition-colors">Threats Eliminated</div>
-                        </div>
-                    </div>
-                </div>
-            `;
-                lucide.createIcons();
-            },
-
-            renderCompliance(el) {
-                const c = pipelineState.complianceData;
-
-                // Build breakdown chart
-                const breakdownHTML = Object.entries(c.fix_breakdown_by_type || {}).map(([type, count]) => `
-                <div class="flex justify-between items-center py-3 border-b border-slate-800">
-                    <span class="text-white font-medium">${type}</span>
-                    <div class="flex items-center gap-3">
-                        <div class="h-2 w-32 bg-slate-800 rounded-full overflow-hidden">
-                            <div class="h-full bg-emerald-500" style="width: ${(count / c.total_fixed * 100) || 0}%"></div>
-                        </div>
-                        <span class="text-emerald-400 font-bold text-sm">${count}</span>
-                    </div>
-                </div>
-            `).join('');
-
-                // Build history table
-                const historyHTML = (c.history || []).map(h => `
-                <tr class="border-b border-slate-800 hover:bg-slate-900/50">
-                    <td class="p-3 text-slate-400 font-mono text-xs">${h.date}</td>
-                    <td class="p-3 text-white font-medium">${h.vulnerability_type}</td>
-                    <td class="p-3 text-slate-400 text-sm">${h.file_name}</td>
-                    <td class="p-3"><span class="bg-emerald-500/20 text-emerald-400 px-2 py-1 rounded text-xs font-bold">FIXED</span></td>
-                </tr>
-            `).join('');
-
                 el.innerHTML = `
-                <div class="grid grid-cols-4 gap-8 mb-10">
-                    <div class="glass p-8 rounded-3xl text-center border-l-4 border-emerald-500 relative overflow-hidden shadow-[0_10px_30px_-15px_rgba(16,185,129,0.3)]">
-                        <div class="absolute inset-0 bg-emerald-500/5"></div>
-                        <div class="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Health Score</div>
-                        <div class="text-6xl font-black text-emerald-400 relative z-10 tracking-tighter">${c.compliance_score || 0}<span class="text-xl">%</span></div>
-                    </div>
-                    <div class="glass p-8 rounded-3xl text-center border-l-4 border-blue-500 relative overflow-hidden">
-                        <div class="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Remedy Velocity</div>
-                        <div class="text-6xl font-black text-blue-400 relative z-10 tracking-tighter">${c.remediation_velocity || '0.0s'}</div>
-                    </div>
-                    <div class="glass p-8 rounded-3xl text-center border-l-4 border-emerald-500 relative overflow-hidden shadow-[0_10px_30_rgba(16,185,129,0.3)]">
-                        <div class="absolute inset-0 bg-emerald-500/5"></div>
-                        <div class="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Total Fixed</div>
-                        <div id="compliance-total-fixed" class="text-6xl font-black text-emerald-400 relative z-10 tracking-tighter">${c.total_fixed || 0}</div>
-                    </div>
-                    <div class="glass p-8 rounded-3xl text-center border-l-4 border-rose-500 relative overflow-hidden shadow-[0_10px_30px_-15px_rgba(244,63,94,0.3)]">
-                        <div class="absolute inset-0 bg-rose-500/5"></div>
-                        <div class="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mb-3 relative z-10">Open Issues</div>
-                        <div class="text-6xl font-black text-rose-500 relative z-10 tracking-tighter">${c.open_count || 0}</div>
-                    </div>
-                    <!-- OWASP Top 10 Coverage Matrix -->
-                    <div class="glass p-8 rounded-3xl border border-white/5 relative overflow-hidden flex flex-col h-[350px]">
-                        <div class="absolute top-0 right-0 p-8 opacity-5 pointer-events-none">
-                            <i data-lucide="shield" class="w-32 h-32"></i>
-                        </div>
-                        <h3 class="text-lg font-black text-white uppercase tracking-widest mb-6 relative z-10 flex items-center justify-between">
-                            <span>OWASP Top 10 Coverage</span>
-                            <span class="text-[10px] text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded">100% ENFORCED</span>
-                        </h3>
-                        <div class="flex-1 overflow-y-auto custom-scrollbar relative z-10 pr-2 space-y-4">
-                            <div>
-                                <div class="flex justify-between text-xs font-bold mb-1">
-                                    <span class="text-slate-300">A01: Broken Access Control</span>
-                                    <span class="text-emerald-400">Verified</span>
-                                </div>
-                                <div class="w-full bg-slate-900 rounded-full h-1.5"><div class="bg-emerald-500 h-1.5 rounded-full" style="width: 100%"></div></div>
+                    <div class="flex flex-col gap-10">
+                        <div class="grid grid-cols-3 gap-8">
+                            <div class="glass p-10 rounded-[40px] text-center border border-blue-500/20 bg-[#0a0f1a]">
+                                <div class="text-[10px] text-blue-400 font-black uppercase tracking-widest mb-4">Engine Accuracy</div>
+                                <div class="text-7xl font-black text-white">${accuracy}%</div>
                             </div>
-                            <div>
-                                <div class="flex justify-between text-xs font-bold mb-1">
-                                    <span class="text-slate-300">A02: Cryptographic Failures</span>
-                                    <span class="text-emerald-400">Verified</span>
-                                </div>
-                                <div class="w-full bg-slate-900 rounded-full h-1.5"><div class="bg-emerald-500 h-1.5 rounded-full" style="width: 100%"></div></div>
+                            <div class="glass p-10 rounded-[40px] text-center border border-${riskColor}-500/20 bg-black/40">
+                                <div class="text-[10px] text-${riskColor}-400 font-black uppercase tracking-widest mb-4">Risk Level</div>
+                                <div class="text-7xl font-black text-${riskColor}-400">${riskScore.toFixed(1)}</div>
                             </div>
-                            <div>
-                                <div class="flex justify-between text-xs font-bold mb-1">
-                                    <span class="text-slate-300">A03: Injection (SQL, NoSQL, OS)</span>
-                                    <span class="text-emerald-400">Actively Mitigated</span>
-                                </div>
-                                <div class="w-full bg-slate-900 rounded-full h-1.5"><div class="bg-emerald-500 h-1.5 rounded-full" style="width: 100%"></div></div>
-                            </div>
-                            <div>
-                                <div class="flex justify-between text-xs font-bold mb-1">
-                                    <span class="text-slate-300">A04: Insecure Design</span>
-                                    <span class="text-blue-400">Scanning</span>
-                                </div>
-                                <div class="w-full bg-slate-900 rounded-full h-1.5 overflow-hidden"><div class="bg-blue-500 h-1.5 rounded-full animate-pulse" style="width: 85%"></div></div>
-                            </div>
-                            <div>
-                                <div class="flex justify-between text-xs font-bold mb-1">
-                                    <span class="text-slate-300">A07: Identification and Authentication Failures</span>
-                                    <span class="text-emerald-400">Verified</span>
-                                </div>
-                                <div class="w-full bg-slate-900 rounded-full h-1.5"><div class="bg-emerald-500 h-1.5 rounded-full" style="width: 100%"></div></div>
+                            <div class="glass p-10 rounded-[40px] text-center border border-emerald-500/20 bg-[#0a1a10]">
+                                <div class="text-[10px] text-emerald-400 font-black uppercase tracking-widest mb-4">Mitigation</div>
+                                <div class="text-7xl font-black text-white">${s.validated_count || 0}/${s.total_vulnerabilities || 0}</div>
                             </div>
                         </div>
-                    </div>
-
-                    <!-- Regulatory Framework Alignment -->
-                    <div class="glass p-8 rounded-3xl border border-white/5 relative overflow-hidden flex flex-col h-[350px]">
-                        <h3 class="text-lg font-black text-white uppercase tracking-widest mb-6 relative z-10">Regulatory Alignment</h3>
-                        <div class="grid grid-cols-2 gap-4 flex-1 relative z-10">
-                            <div class="bg-black/40 border border-white/5 rounded-2xl p-5 flex flex-col items-center justify-center group hover:border-emerald-500/30 transition-colors">
-                                <i data-lucide="scale" class="w-8 h-8 text-slate-500 group-hover:text-emerald-400 mb-3 transition-colors"></i>
-                                <div class="text-white font-black tracking-widest uppercase mb-1">GDPR</div>
-                                <div class="text-[10px] text-emerald-400 font-bold uppercase bg-emerald-500/10 px-2 py-0.5 rounded">Compliant</div>
-                            </div>
-                            <div class="bg-black/40 border border-white/5 rounded-2xl p-5 flex flex-col items-center justify-center group hover:border-emerald-500/30 transition-colors">
-                                <i data-lucide="shield" class="w-8 h-8 text-slate-500 group-hover:text-emerald-400 mb-3 transition-colors"></i>
-                                <div class="text-white font-black tracking-widest uppercase mb-1">HIPAA</div>
-                                <div class="text-[10px] text-emerald-400 font-bold uppercase bg-emerald-500/10 px-2 py-0.5 rounded">Compliant</div>
-                            </div>
-                            <div class="bg-black/40 border border-white/5 rounded-2xl p-5 flex flex-col items-center justify-center group hover:border-blue-500/30 transition-colors">
-                                <i data-lucide="credit-card" class="w-8 h-8 text-slate-500 group-hover:text-blue-400 mb-3 transition-colors"></i>
-                                <div class="text-white font-black tracking-widest uppercase mb-1">PCI-DSS</div>
-                                <div class="text-[10px] text-blue-400 font-bold uppercase bg-blue-500/10 px-2 py-0.5 rounded">Auditing</div>
-                            </div>
-                            <div class="bg-black/40 border border-white/5 rounded-2xl p-5 flex flex-col items-center justify-center group hover:border-emerald-500/30 transition-colors">
-                                <i data-lucide="lock" class="w-8 h-8 text-slate-500 group-hover:text-emerald-400 mb-3 transition-colors"></i>
-                                <div class="text-white font-black tracking-widest uppercase mb-1">SOC 2</div>
-                                <div class="text-[10px] text-emerald-400 font-bold uppercase bg-emerald-500/10 px-2 py-0.5 rounded">Compliant</div>
-                            </div>
+                        <div class="glass p-10 rounded-[40px] bg-black/60 border border-white/5">
+                             <div class="grid grid-cols-3 gap-8 text-center divide-x divide-white/10 uppercase font-black">
+                                 <div><div class="text-4xl text-blue-100">${s.total_scans || 0}</div><div class="text-[9px] text-slate-500 mt-2">Operations</div></div>
+                                 <div><div class="text-4xl text-rose-500">${s.total_vulnerabilities || 0}</div><div class="text-[9px] text-slate-500 mt-2">Threats</div></div>
+                                 <div><div class="text-4xl text-emerald-400">${s.validated_count || 0}</div><div class="text-[9px] text-slate-500 mt-2">Eliminated</div></div>
+                             </div>
                         </div>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-8 h-[400px]">
-                    <div class="glass p-8 rounded-3xl border border-white/5 flex flex-col">
-                        <h3 class="text-white font-black uppercase tracking-widest text-sm mb-6 pb-4 border-b border-white/5">Remediation Distribution</h3>
-                        <div class="flex-1 overflow-y-auto pr-4 custom-scrollbar">
-                            ${breakdownHTML || '<div class="h-full flex items-center justify-center text-slate-500 font-black uppercase tracking-[0.2em] text-[10px]">No mitigation data generated</div>'}
-                        </div>
-                    </div>
-                    
-                    <div class="glass p-8 rounded-3xl border border-white/5 flex flex-col">
-                        <h3 class="text-white font-black uppercase tracking-widest text-sm mb-6 pb-4 border-b border-white/5">Compliance Audit Log</h3>
-                        <div class="flex-1 overflow-y-auto pr-4 custom-scrollbar">
-                            <table class="w-full text-left border-collapse">
-                                <thead class="text-[10px] text-slate-500 uppercase font-black tracking-widest">
-                                    <tr>
-                                        <th class="pb-4">Timestamp</th>
-                                        <th class="pb-4">Policy Vector</th>
-                                        <th class="pb-4">Origin</th>
-                                        <th class="pb-4">Clearance</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${historyHTML || '<tr><td colspan="4" class="py-10 text-center text-slate-500 font-black uppercase tracking-[0.2em] text-[10px]">No historical audit events logged</td></tr>'}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            `;
-                this.updateComplianceDynamic(el);
-            },
-
-            // Duplicate updateWebsiteScannerDynamic removed to prevent logic collisions.
-
-            // Removed duplicate update methods that were causing DOM reference failures
-            renderFeedback(el) {
-                const f = pipelineState.feedbackData;
-                const comments = (f.comments || []).map(c => `
-                <div class="bg-slate-900/50 border border-slate-800 p-4 rounded-lg mb-3">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="text-blue-400 font-mono text-xs">${c.vulnerability_id}</span>
-                        <div class="flex gap-1 text-amber-500">
-                            ${Array(c.rating).fill('★').join('')}
-                        </div>
-                    </div>
-                    <p class="text-slate-300 text-sm italic">"${c.comment}"</p>
-                    <div class="mt-2 text-right text-[10px] text-slate-600 uppercase font-bold">${c.created_at}</div>
-                </div>`).join('');
-
-                el.innerHTML = `
-                <div class="grid grid-cols-2 gap-8 h-[600px]">
-                    <div class="glass p-10 rounded-3xl flex flex-col items-center justify-center text-center relative overflow-hidden border border-amber-500/20 shadow-[0_10px_40px_-15px_rgba(245,158,11,0.2)]">
-                        <div class="absolute inset-0 bg-amber-500/5 blur-3xl rounded-full"></div>
-                        <div class="text-[11px] text-slate-400 font-black uppercase tracking-[0.2em] mb-4 relative z-10">Average Security Rating</div>
-                        <div class="text-9xl font-black text-amber-500 mb-6 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)] relative z-10">${f.average_rating || 0}</div>
-                        <div class="flex gap-2 text-3xl text-amber-500 mb-8 relative z-10">
-                            ${Array(Math.round(f.average_rating || 0)).fill('★').join('')}
-                        </div>
-                        <div class="px-4 py-1.5 rounded-full border border-amber-500/30 bg-amber-900/20 text-[10px] tracking-widest font-black text-amber-400 uppercase relative z-10">${f.total_feedback || 0} Submissions</div>
-                    </div>
-                    
-                    <div class="flex flex-col h-full glass rounded-3xl border border-white/5 p-8 relative overflow-hidden">
-                        <h3 class="text-white font-black text-xl mb-6 tracking-tight relative z-10">Community Feedback</h3>
-                        <div class="flex-1 overflow-y-auto pr-4 custom-scrollbar relative z-10">
-                            ${comments || '<div class="h-full flex items-center justify-center text-slate-500 font-black uppercase tracking-[0.2em] text-[10px]">No feedback submitted yet.<br>Validate a patch to submit feedback.</div>'}
-                        </div>
-                    </div>
-                </div>`;
-            },
-
-            // Called once when navigating to terminal - builds static shell
-            renderTerminal(el) {
-                el.innerHTML = `
-                <div class="h-full flex flex-col glass rounded-3xl border border-white/10 overflow-hidden shadow-[0_20px_50px_-15px_rgba(0,0,0,0.5)]">
-                    <div class="bg-black/60 backdrop-blur-xl px-6 py-4 border-b border-white/10 flex items-center justify-between shadow-md">
-                        <div class="flex items-center gap-6">
-                            <button id="term-tab-scan"
-                                onclick="app.switchTerminalMode('scan')"
-                                class="text-[11px] font-black uppercase tracking-[0.2em] transition-all relative pb-2 ${this.terminalMode === 'scan' ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 hover:text-white'}">
-                                Scanner Logic
-                            </button>
-                            <button id="term-tab-pipeline"
-                                onclick="app.switchTerminalMode('pipeline')"
-                                class="text-[11px] font-black uppercase tracking-[0.2em] transition-all relative pb-2 ${this.terminalMode === 'pipeline' ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 hover:text-white'}">
-                                Automation Kernel
-                            </button>
-                        </div>
-                        <div class="text-[9px] text-slate-600 font-black uppercase tracking-[0.3em] flex items-center gap-2">
-                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse block"></span> Live Shell Console
-                        </div>
-                    </div>
-                    <div id="terminal-body" class="flex-1 p-8 overflow-y-auto custom-scrollbar font-mono bg-[#050505] border-t border-black">
-                        <div class="text-slate-700 animate-pulse font-bold tracking-widest">_ Initializing console...</div>
-                    </div>
-                </div>`;
-                // Populate with correct segment on first render
-                this.updateTerminalLogs();
-            },
-
-            // Switch segment WITHOUT re-rendering the shell
-            switchTerminalMode(mode) {
-                this.terminalMode = mode;
-                const scanBtn = document.getElementById('term-tab-scan');
-                const pipeBtn = document.getElementById('term-tab-pipeline');
-                if (scanBtn) {
-                    scanBtn.className = `text-[11px] font-black uppercase tracking-[0.2em] transition-all relative pb-2 ${mode === 'scan' ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 hover:text-white'}`;
-                }
-                if (pipeBtn) {
-                    pipeBtn.className = `text-[11px] font-black uppercase tracking-[0.2em] transition-all relative pb-2 ${mode === 'pipeline' ? 'text-blue-400 border-b-2 border-blue-500' : 'text-slate-500 hover:text-white'}`;
-                }
-                this.updateTerminalLogs();
-            },
-
-            renderWebsiteScanner(el) {
-                const sites = pipelineState.availableWebsites.map(s => `
-                <div class="glass p-8 rounded-[30px] border border-white/5 hover:border-blue-500/30 transition-all flex flex-col justify-between group bg-black/40 relative overflow-hidden">
-                    <div class="absolute inset-0 bg-gradient-to-br from-blue-600/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                    <div class="relative z-10">
-                        <div class="flex items-center gap-4 mb-6">
-                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-800 to-black border border-white/10 flex items-center justify-center text-blue-400 shadow-lg group-hover:scale-110 transition-transform">
-                                <i data-lucide="globe" class="w-7 h-7"></i>
-                            </div>
-                            <div>
-                                <h4 class="text-white font-black leading-tight text-lg tracking-tight italic uppercase">${s.name}</h4>
-                                <div class="text-[9px] text-blue-500 font-black tracking-[0.2em] uppercase">Target ID: ${s.id}</div>
-                            </div>
-                        </div>
-                        <div class="bg-[#050505] rounded-2xl p-4 mb-6 border border-white/5 shadow-inner">
-                            <div class="text-[10px] text-slate-500 font-black uppercase tracking-[0.2em] mb-2">Authenticated Endpoint</div>
-                            <div class="flex items-center gap-3">
-                                <input type="text" value="${s.url}" readonly 
-                                    class="flex-1 bg-transparent text-xs font-mono text-blue-400 outline-none select-all cursor-pointer truncate" 
-                                    onclick="this.select()" />
-                                <button onclick="app.copyToClipboard('${s.url}')" 
-                                    class="text-slate-600 hover:text-blue-400 transition-all p-1" title="Copy URL">
-                                    <i data-lucide="copy" class="w-4 h-4"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    <button onclick="app.scanPredefinedWebsite('${s.id}')"
-                        class="w-full bg-white/5 hover:bg-blue-600 text-white font-black py-4 rounded-2xl text-[11px] uppercase tracking-[0.3em] transition-all flex items-center justify-center gap-3 border border-white/10 hover:border-blue-400 shadow-lg relative z-10 group-hover:-translate-y-1">
-                        <i data-lucide="zap" class="w-4 h-4 text-emerald-400"></i> Engage Kernel Scan
-                    </button>
-                </div>`).join('');
-
-                el.innerHTML = `
-                <div class="flex justify-between items-end mb-10">
-                    <div>
-                        <h3 class="text-3xl font-black text-white tracking-tight italic uppercase underline decoration-blue-500 decoration-2 underline-offset-8 mb-4">Target Registry Center</h3>
-                        <p class="text-slate-500 text-xs font-black tracking-[0.2em] uppercase">Neural-linked scanning endpoints v4.0.2</p>
-                    </div>
-                    <button onclick="app.executiveScan()" 
-                        class="bg-rose-600 hover:bg-rose-500 text-white font-black uppercase tracking-[0.3em] px-10 py-5 rounded-3xl shadow-[0_20px_50px_rgba(225,29,72,0.3)] hover:shadow-[0_25px_60px_rgba(225,29,72,0.5)] hover:-translate-y-1.5 flex items-center gap-4 transition-all duration-500 border-2 border-rose-400/20">
-                        <i data-lucide="shield-alert" class="w-6 h-6 animate-pulse"></i> RUN EXECUTIVE PROTOCOL
-                    </button>
-                </div>
-                
-                <div class="glass p-12 rounded-[45px] border border-blue-500/20 bg-[#0a0a0f]/80 mb-12 shadow-3xl relative overflow-hidden group">
-                    <div class="absolute -top-32 -right-32 w-80 h-80 bg-blue-600/10 blur-[100px] rounded-full pointer-events-none group-hover:bg-blue-600/20 transition-colors"></div>
-                    <div class="flex items-center gap-8 relative z-10">
-                        <div class="w-24 h-24 rounded-3xl bg-blue-900/40 border border-blue-500/20 flex items-center justify-center shadow-inner">
-                            <i data-lucide="radar" class="w-12 h-12 text-blue-500 animate-[spin_10s_linear_infinite]"></i>
-                        </div>
-                        <div class="flex-1">
-                            <h3 class="text-2xl font-black text-white mb-2 tracking-tight uppercase italic flex items-center gap-3">
-                                Manually Engaged Scanner <span class="text-[10px] text-blue-500 font-black border border-blue-500/40 px-3 py-1 rounded-full not-italic">REAL-TIME TYPING INSTANCE</span>
-                            </h3>
-                            <p class="text-slate-500 text-sm font-medium max-w-2xl leading-relaxed">Supply a custom endpoint URL to redirect the neural heuristic core towards any external or internal target environment.</p>
-                        </div>
-                    </div>
-                    <div class="flex gap-6 mt-10 relative z-10">
-                        <div class="flex-1 flex items-center bg-black/60 border border-white/5 rounded-3xl px-8 focus-within:border-blue-500/50 focus-within:ring-4 focus-within:ring-blue-500/5 transition-all shadow-inner group-hover:border-white/10">
-                            <i data-lucide="anchor" class="w-6 h-6 text-slate-600 mr-4"></i>
-                            <input type="url" id="custom-url-input-registry" placeholder="https://target-endpoint-ip-or-domain.com" class="bg-transparent text-lg font-mono text-white w-full py-6 outline-none">
-                        </div>
-                        <button onclick="app.scanWebsite(document.getElementById('custom-url-input-registry').value)" 
-                            class="bg-gradient-to-br from-blue-700 to-indigo-800 hover:from-blue-600 hover:to-indigo-700 text-white font-black tracking-[0.3em] px-12 py-6 rounded-3xl shadow-[0_20px_40px_rgba(59,130,246,0.3)] hover:shadow-[0_25px_50px_rgba(59,130,246,0.5)] flex items-center gap-4 transition-all duration-500 shrink-0 hover:-translate-y-2 border border-blue-400/20">
-                            <i data-lucide="zap" class="w-5 h-5 text-emerald-400"></i> ENGAGE KERNEL
-                        </button>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-3 gap-8">
-                    ${sites || '<div class="col-span-4 text-center py-20 text-slate-500 font-black tracking-[0.2em] text-[10px] uppercase">Awaiting Registry Sync...</div>'}
-                </div>
-            `;
+                    </div>`;
                 lucide.createIcons();
             },
 
             updateSystemDynamic(el) {
                 const s = pipelineState.systemCore;
-                const accuracy = (s.engine_accuracy || 0).toFixed(1);
-                const stateHash = `${accuracy}-${s.validated_count}-${s.patched_count}`;
-                if (el.getAttribute('data-render-hash') !== stateHash) {
+                const hash = `${s.engine_accuracy}-${s.validated_count}-${s.total_vulnerabilities}`;
+                if (el.getAttribute('data-render-hash') !== hash) {
                     this.renderSystem(el);
-                    el.setAttribute('data-render-hash', stateHash);
+                    el.setAttribute('data-render-hash', hash);
                 }
+            },
+
+            renderFeedback(el) {
+                const f = pipelineState.feedbackData;
+                const items = (f.comments || []).map(c => `
+                    <div class="glass p-6 rounded-3xl mb-4 border border-white/5 bg-black/40 shadow-inner group">
+                        <div class="flex justify-between items-center mb-3">
+                            <span class="text-blue-500 font-mono text-[10px] font-black uppercase tracking-widest">${c.vulnerability_id}</span>
+                            <div class="flex text-amber-500 text-xs">${Array(c.rating).fill('★').join('')}</div>
+                        </div>
+                        <p class="text-slate-300 text-sm italic font-medium leading-relaxed group-hover:text-white transition-colors">"${c.comment}"</p>
+                    </div>`).join('');
+                el.innerHTML = `
+                    <div class="grid grid-cols-2 gap-10 h-full">
+                        <div class="glass p-12 rounded-[50px] flex flex-col items-center justify-center text-center border border-amber-500/10 bg-[#1a150a]">
+                            <div class="text-[11px] text-amber-500 font-black uppercase tracking-widest mb-6 border border-amber-500/20 px-6 py-2 rounded-full">Core Sentiment Score</div>
+                            <div class="text-9xl font-black text-amber-400 drop-shadow-2xl mb-4">${f.average_rating || 0}</div>
+                            <div class="text-slate-500 text-[10px] font-black uppercase tracking-widest">Based on ${f.total_feedback || 0} Neural Surveys</div>
+                        </div>
+                        <div class="flex flex-col overflow-hidden glass rounded-[50px] border border-white/5 p-10 bg-black/40">
+                             <h3 class="text-white font-black text-xl mb-8 italic uppercase tracking-tight">Intelligence Feedback Loop</h3>
+                             <div class="flex-1 overflow-y-auto custom-scrollbar pr-4">${items || '<div class="h-full flex items-center justify-center opacity-30 text-[10px] font-black uppercase tracking-widest">_ Terminal Inactive</div>'}</div>
+                        </div>
+                    </div>`;
+            },
+
+            updateFeedbackDynamic(el) {
+                const f = pipelineState.feedbackData;
+                const hash = `${f.average_rating}-${f.total_feedback}`;
+                if (el.getAttribute('data-render-hash') !== hash) {
+                    this.renderFeedback(el);
+                    el.setAttribute('data-render-hash', hash);
+                }
+            },
+
+            renderWebsiteScanner(el) {
+                const sites = (pipelineState.availableWebsites || []).map(s => `
+                    <div class="glass p-8 rounded-[40px] border border-white/10 bg-black/40 hover:border-blue-500/40 transition-all flex flex-col justify-between group h-full">
+                        <div>
+                            <div class="flex items-center gap-5 mb-8">
+                                <div class="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all shadow-xl">
+                                    <i data-lucide="globe" class="w-7 h-7"></i>
+                                </div>
+                                <div>
+                                    <h4 class="text-white font-black text-lg italic uppercase tracking-tighter">${s.name}</h4>
+                                    <div class="text-[9px] text-slate-500 font-black uppercase tracking-widest">SID: ${s.id}</div>
+                                </div>
+                            </div>
+                            <div class="bg-black/60 rounded-2xl p-5 mb-8 border border-white/5 font-mono text-[10px] text-blue-400/80 truncate">${s.url}</div>
+                        </div>
+                        <button onclick="pipelineState.scanPredefinedWebsite('${s.id}')" class="w-full bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white font-black py-5 rounded-2xl text-[10px] uppercase tracking-[0.3em] transition-all border border-blue-500/20 shadow-lg group-hover:shadow-blue-500/20">Init Target Scan</button>
+                    </div>`).join('');
+                el.innerHTML = `
+                    <div class="flex flex-col gap-10">
+                        <div class="flex justify-between items-center bg-rose-500/5 p-10 rounded-[50px] border border-rose-500/10 mb-6">
+                            <div>
+                                <h3 class="text-3xl font-black text-white italic uppercase mb-2 tracking-tight underline decoration-rose-500 decoration-4 underline-offset-8">Neural Target Injection</h3>
+                                <p class="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em]">Supply custom endpoint for kernel redirection</p>
+                            </div>
+                            <div class="flex-1 max-w-xl mx-10">
+                                <div class="flex gap-4 p-2 bg-black/60 border border-white/10 rounded-3xl focus-within:border-rose-500/50 transition-all">
+                                    <input id="custom-url-registry" type="url" placeholder="https://external-target.com" class="bg-transparent flex-1 px-6 font-mono text-sm text-white outline-none">
+                                    <button onclick="pipelineState.scanWebsite(document.getElementById('custom-url-registry').value)" class="bg-rose-600 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-500 transition-all shadow-xl">Engage Target</button>
+                                </div>
+                            </div>
+                            <button onclick="pipelineState.executiveScan()" class="bg-white text-black font-black uppercase tracking-[0.3em] px-10 py-6 rounded-3xl hover:bg-blue-500 hover:text-white transition-all shadow-2xl">Executive Scan Protocol</button>
+                        </div>
+                        <div class="grid grid-cols-3 gap-8">${sites || '<div class="col-span-3 p-20 text-center opacity-30 text-[10px] font-black uppercase tracking-[0.4em]">_ Registry Load Sequence Active</div>'}</div>
+                    </div>`;
+                lucide.createIcons();
             },
 
             updateWebsiteScannerDynamic(el) {
-                const sites = pipelineState.websites;
-                const stateHash = (sites || []).map(s => s.status).join('|');
-                if (el.getAttribute('data-render-hash') !== stateHash) {
+                const sites = pipelineState.availableWebsites || [];
+                const hash = sites.map(s => s.id + (s.status || '')).join('|');
+                if (el.getAttribute('data-render-hash') !== hash) {
                     this.renderWebsiteScanner(el);
-                    el.setAttribute('data-render-hash', stateHash);
+                    el.setAttribute('data-render-hash', hash);
                 }
             },
 
-            updatePatchLabDynamic(el) {
-                const activeId = pipelineState.activeVulnId;
-                const vuln = (pipelineState.vulnerabilities || []).find(v => v.id === activeId);
-                if (vuln) {
-                    const stateHash = `${vuln.id}-${vuln.status}`;
-                    if (el.getAttribute('data-render-hash') !== stateHash) {
-                        this.renderPatchLab(el);
-                        el.setAttribute('data-render-hash', stateHash);
-                    }
+            renderTerminal(el) {
+                el.innerHTML = `
+                    <div class="glass rounded-[40px] border border-white/10 flex flex-col bg-black/60 h-full overflow-hidden shadow-2xl">
+                        <div class="p-8 border-b border-white/5 flex gap-10 items-center justify-between bg-black/20">
+                            <div class="flex gap-10">
+                                <button id="term-tab-scan" onclick="app.switchTerminalMode('scan')" class="text-[11px] font-black uppercase tracking-widest pb-2 border-b-2 transition-all ${this.terminalMode === 'scan' ? 'text-blue-400 border-blue-500' : 'text-slate-500 border-transparent hover:text-white'}">Scanner Matrix</button>
+                                <button id="term-tab-pipeline" onclick="app.switchTerminalMode('pipeline')" class="text-[11px] font-black uppercase tracking-widest pb-2 border-b-2 transition-all ${this.terminalMode === 'pipeline' ? 'text-blue-400 border-blue-500' : 'text-slate-500 border-transparent hover:text-white'}">Automation Kernel</button>
+                            </div>
+                            <span class="text-[10px] font-black text-slate-700 uppercase tracking-widest">Status: 0xFD Connected</span>
+                        </div>
+                        <div id="main-terminal-body" class="flex-1 p-10 font-mono text-xs overflow-y-auto custom-scrollbar bg-black/40"></div>
+                    </div>`;
+                this.updateTerminalLogs();
+            },
+
+            updateTerminalLogs() {
+                const body = document.getElementById('main-terminal-body');
+                if (!body) return;
+                const mode = this.terminalMode || 'scan';
+                const logs = mode === 'scan' ? pipelineState.terminalLogs : pipelineState.pipelineLogs;
+                if (!this.renderedIndices) this.renderedIndices = {};
+                if (typeof this.renderedIndices[mode] === 'undefined') this.renderedIndices[mode] = 0;
+                
+                const cur = this.renderedIndices[mode];
+                const unrendered = logs.slice(cur);
+                
+                if (cur > logs.length) { body.innerHTML = ''; this.renderedIndices[mode] = 0; }
+                if (unrendered.length > 0) {
+                    const html = unrendered.map(log => {
+                        const level = log.level || 'INFO';
+                        const color = level === 'ERROR' ? 'text-rose-500' : level === 'WARNING' ? 'text-amber-400' : level === 'SUCCESS' ? 'text-blue-400' : 'text-emerald-400/80';
+                        return `<div class="mb-1.5 flex gap-4"><span class="text-slate-700 shrink-0">[${log.timestamp || ''}]</span><span class="${color}">${(log.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span></div>`;
+                    }).join('');
+                    body.insertAdjacentHTML('beforeend', html);
+                    this.renderedIndices[mode] = logs.length;
+                    body.scrollTop = body.scrollHeight;
+                } else if (logs.length === 0 && !body.innerHTML.trim()) {
+                    body.innerHTML = `<div class="text-slate-800 animate-pulse font-black italic">_ Awaiting Terminal Stream...</div>`;
                 }
             },
+
+            switchTerminalMode(mode) {
+                this.terminalMode = mode;
+                const body = document.getElementById('main-terminal-body');
+                if (body) body.innerHTML = '';
+                if (this.renderedIndices) this.renderedIndices[mode] = 0;
+                this.renderTerminal(document.getElementById('main-container'));
+            },
+
+            showToast(msg, type = 'success') {
+                const id = 'toast-' + Date.now();
+                const color = type === 'error' ? 'from-rose-600 to-rose-900 border-rose-400/50' : 'from-blue-600 to-indigo-900 border-blue-400/50';
+                const html = `
+                    <div id="${id}" class="fixed bottom-10 right-10 z-[100] px-8 py-5 rounded-3xl bg-gradient-to-br ${color} text-white font-black text-xs uppercase tracking-widest shadow-2xl border flex items-center gap-4 animate-slide-up">
+                        <i data-lucide="${type === 'error' ? 'shield-alert' : 'shield-check'}" class="w-5 h-5"></i> ${msg}
+                    </div>`;
+                document.body.insertAdjacentHTML('beforeend', html);
+                lucide.createIcons();
+                setTimeout(() => {
+                    const el = document.getElementById(id);
+                    if (el) { el.classList.add('opacity-0', 'translate-y-10'); setTimeout(() => el.remove(), 500); }
+                }, 4000);
+            },
+
+            copyToClipboard(text) {
+                navigator.clipboard.writeText(text).then(() => this.showToast("Cortex Reference Copied"));
+            },
+
+            showIntelligenceHUD(id) {
+                const v = (pipelineState.vulnerabilities || []).find(x => x.id === id);
+                if (!v) return;
+                this.showToast("Fetching Technical Intelligence...", "info");
+                setTimeout(() => {
+                    alert(`Technical Analysis [${v.id}]:\nType: ${v.vulnerability_type}\nStatus: ${v.status}\nURL: ${v.url}`);
+                }, 500);
+            },
+
+            submitFeedback(id) {
+                const comment = prompt(`Technical Feedback for ${id}:`);
+                if (comment) {
+                    pipelineState.submitFeedback(id, 5, comment);
+                    this.showToast("Feedback Logged to Kernel");
+                }
+            },
+
+            init() {
+                console.log("System Initializing...");
+                pipelineState.fetchAll();
+                setInterval(() => {
+                    pipelineState.fetchAll();
+                    pipelineState.fetchTerminal();
+                }, 3000);
+                router.go('dashboard');
+                lucide.createIcons();
+            }
         };
 
         window.onload = () => app.init();
     </script>
 </body>
-
 </html>
 ```
