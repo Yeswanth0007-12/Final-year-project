@@ -400,8 +400,8 @@
                     this.scanStatus = 'RUNNING';
                     this.lastScannerIndex = 0;
                     this.lastAutomationIndex = 0;
-                    this.scannerLogs = [];
-                    this.automationLogs = [];
+                    this.terminalLogs = [];
+                    this.pipelineLogs = [];
                     this.scanFinishedFlag = false; // Reset flag for popup
                     // Always go to terminal Scanner Logic tab
                     app.terminalMode = 'scan';
@@ -487,8 +487,13 @@
             init() {
                 router.go('dashboard');
                 pipelineState.fetchWebsites();
-                setInterval(() => pipelineState.fetchAll(), 400);
-                setInterval(() => pipelineState.fetchTerminal(), 400);
+                // Start live sync - ULTRA FAST 500ms polling for dynamic live-feed
+                setInterval(() => {
+                    pipelineState.fetchAll();
+                    if (router.current === 'terminal' || pipelineState.terminalMode) {
+                        pipelineState.fetchTerminal();
+                    }
+                }, 500);
             },
 
             async executeScan() {
@@ -829,22 +834,25 @@
             },
 
             renderOrbitalRadar(container) {
-                const s = pipelineState.metrics;
-                const secured = s.validated || 0;
+                try {
+                    const s = pipelineState.metrics || {};
+                    const secured = s.validated || 0;
 
-                // We'll generate dynamic "points" (blips) based on vulnerabilities
-                const blips = (pipelineState.vulnerabilities || []).slice(0, 40).map((v, i) => {
-                    const angle = (i * 37) * (Math.PI / 180); // Spread them out
-                    const distance = Math.max(10, 45 - (v.risk_score || 5) * 3); // Higher risk = closer to center (10-45 radius)
-                    const x = 50 + distance * Math.cos(angle);
-                    const y = 50 + distance * Math.sin(angle);
-                    const isFixed = v.status === 'FIXED';
-                    const color = isFixed ? '#10b981' : (v.status === 'QUEUED_FOR_PATCH' || v.status.includes('PATCH') ? '#3b82f6' : '#f43f5e');
-                    return `<circle cx="${x}" cy="${y}" r="1.5" fill="${color}" class="${isFixed ? '' : 'animate-ping'}" style="filter: drop-shadow(0 0 5px ${color}); animation-duration: ${1 + (i % 3) * 0.5}s;"></circle>
-                            <circle cx="${x}" cy="${y}" r="0.8" fill="#fff"></circle>`;
-                }).join('');
+                    // Generate dynamic "points" (blips) based on vulnerabilities safely
+                    const blips = (pipelineState.vulnerabilities || []).slice(0, 40).map((v, i) => {
+                        if (!v) return '';
+                        const angle = (i * 37) * (Math.PI / 180);
+                        const distance = Math.max(10, 45 - (v.risk_score || 5) * 3);
+                        const x = 50 + distance * Math.cos(angle);
+                        const y = 50 + distance * Math.sin(angle);
+                        const statusStr = v.status || '';
+                        const isFixed = statusStr === 'FIXED';
+                        const color = isFixed ? '#10b981' : (statusStr === 'QUEUED_FOR_PATCH' || statusStr.includes('PATCH') ? '#3b82f6' : '#f43f5e');
+                        return `<circle cx="${x}" cy="${y}" r="1.5" fill="${color}" class="${isFixed ? '' : 'animate-ping'}" style="filter: drop-shadow(0 0 5px ${color}); animation-duration: ${1 + (i % 3) * 0.5}s;"></circle>
+                                <circle cx="${x}" cy="${y}" r="0.8" fill="#fff"></circle>`;
+                    }).join('');
 
-                container.innerHTML = `
+                    container.innerHTML = `
                     <div class="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-10 mix-blend-overlay"></div>
                     
                     <div class="absolute top-8 left-10 flex flex-col gap-1 z-10">
@@ -893,6 +901,9 @@
                         ${blips}
                     </svg>
                 `;
+                } catch (e) {
+                    console.error("Radar Render Exception:", e);
+                }
             },
 
             updateProgressBar() {
@@ -977,7 +988,7 @@
                 if (!body) return;
 
                 const logsSource = this.terminalMode === 'scan'
-                    ? pipelineState.terminalLogs
+                    ? (this.terminalLogs || [])
                     : (pipelineState.pipelineLogs || []);
 
                 // Get only logs we haven't rendered yet
@@ -1190,35 +1201,42 @@
             },
 
             renderVulns(el) {
-                // Show ALL vulnerabilities regardless of status
-                const allVulns = pipelineState.vulnerabilities;
-                const rows = allVulns.map(v => `
+                try {
+                    // Show ALL vulnerabilities regardless of status safely
+                    const allVulns = pipelineState.vulnerabilities || [];
+                    const rows = allVulns.map(v => {
+                        if (!v) return '';
+                        const statusStr = v.status || 'UNKNOWN';
+                        const isFixed = statusStr === 'FIXED';
+                        const isPatching = ['QUEUED_FOR_PATCH', 'PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(statusStr);
+                        const statusColor = isFixed ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]' :
+                            isPatching ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
+                                statusStr === 'FAILED' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
+                                    'bg-slate-800/40 text-slate-400 border border-white/10';
+
+                        return `
                 <tr class="border-b border-white/5 hover:bg-white/[0.02] transition-colors group">
-                    <td class="p-6 font-mono text-[11px] text-blue-500 font-bold tracking-wider">${v.id}</td>
+                    <td class="p-6 font-mono text-[11px] text-blue-500 font-bold tracking-wider">${v.id || 'N/A'}</td>
                     <td class="p-6">
-                        <div class="text-white font-black text-sm mb-1 tracking-tight italic">${v.vulnerability_type}</div>
-                        <div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${v.website_name}</div>
+                        <div class="text-white font-black text-sm mb-1 tracking-tight italic">${v.vulnerability_type || 'Unknown Vector'}</div>
+                        <div class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">${v.website_name || 'System Target'}</div>
                     </td>
                     <td class="p-6">
                         <span class="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest bg-rose-500/10 text-rose-500 border border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.1)]">
-                            <i data-lucide="shield-alert" class="w-2.5 h-2.5 mr-1.5"></i> ${v.severity}
+                            <i data-lucide="shield-alert" class="w-2.5 h-2.5 mr-1.5"></i> ${v.severity || 'UNKNOWN'}
                         </span>
                     </td>
                     <td class="p-6">
                     <div class="flex items-center gap-2 group/copy">
-                        <div class="font-mono text-slate-400 text-[11px] bg-black/40 px-3 py-2 rounded-xl border border-white/5 truncate max-w-[200px]" title="${v.url}">
+                        <div class="font-mono text-slate-400 text-[11px] bg-black/40 px-3 py-2 rounded-xl border border-white/5 truncate max-w-[200px]" title="${v.url || ''}">
                             ${v.url || 'LOCAL KERNEL'}
                         </div>
                         ${v.url ? `<button onclick="app.copyToClipboard('${v.url}')" class="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-500 hover:text-white transition-colors opacity-0 group-hover/copy:opacity-100" title="Copy URL"><i data-lucide="copy" class="w-3 h-3"></i></button>` : ''}
                     </div>
                 </td>
                     <td class="p-6">
-                        <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${v.status === 'FIXED' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]' :
-                        ['QUEUED_FOR_PATCH', 'PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(v.status) ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]' :
-                            v.status === 'FAILED' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/30' :
-                                'bg-slate-800/40 text-slate-400 border border-white/10'
-                    }">
-                            ${(v.status || 'UNKNOWN').replace(/_/g, ' ')}
+                        <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${statusColor}">
+                            ${statusStr.replace(/_/g, ' ')}
                         </span>
                     </td>
                     <td class="p-6 text-right">
@@ -1239,9 +1257,9 @@
                         </div>
                     </td>
                 </tr>
-            `).join('');
+                `}).join('');
 
-                el.innerHTML = `
+                    el.innerHTML = `
                 <div class="glass rounded-[35px] overflow-hidden border border-white/10 shadow-3xl bg-[#020617]/40 backdrop-blur-3xl">
                     <div class="p-8 border-b border-white/5 flex justify-between items-center bg-gradient-to-r from-blue-900/10 to-transparent">
                         <div>
@@ -1269,44 +1287,46 @@
                             </thead>
                             <tbody class="divide-y divide-white/[0.03] text-sm">${rows || '<tr><td colspan="6" class="p-40 text-center text-slate-700 font-black tracking-[0.5em] italic uppercase opacity-50 animate-pulse">_ Awaiting neural scan data...</td></tr>'}</tbody>
                         </table>
-                    </div>
-                </div>
-            `;
-                lucide.createIcons();
+            </div>
+        </div>
+    </div>`;
+                } catch (e) { console.error("Vuln Tab Crash:", e); }
             },
-
             renderPatchLab(el) {
-                const v = pipelineState.vulnerabilities.find(i => i.id === pipelineState.activeVulnId);
-                if (!v) {
-                    el.innerHTML = `
+                try {
+                    const v = (pipelineState.vulnerabilities || []).find(i => i && i.id === pipelineState.activeVulnId);
+                    if (!v) {
+                        el.innerHTML = `
                         <div class="flex flex-col items-center justify-center h-full text-center">
                             <i data-lucide="file-search" class="w-16 h-16 text-slate-700 mb-4"></i>
                             <div class="text-slate-500 text-lg font-bold">No Vulnerability Selected</div>
                             <div class="text-slate-600 text-sm mt-2">Navigate to Vulnerabilities tab and click "Review Fix" to analyze patches.</div>
                         </div>
                     `;
-                    lucide.createIcons();
-                    return;
-                }
-
-                // Handle diff display - show proper message if not generated yet
-                let diffContent = v.diff;
-                if (!diffContent || diffContent.trim() === '' || diffContent === 'null') {
-                    if (v.status === 'DETECTED') {
-                        diffContent = '// Click "Generate Patch" in the Vulnerabilities tab first\n// to see the proposed fix here.';
-                    } else if (v.status === 'PATCHED') {
-                        diffContent = v.suggested_fix || '// Patch generated but diff not available\n// You can still validate this fix.';
-                    } else {
-                        diffContent = '// No patch data available';
+                        lucide.createIcons();
+                        return;
                     }
-                }
 
-                el.innerHTML = `
+                    // Handle diff display - show proper message if not generated yet
+                    let diffContent = v.diff;
+                    if (!diffContent || diffContent.trim() === '' || diffContent === 'null') {
+                        if (v.status === 'DETECTED') {
+                            diffContent = '// Click "Generate Patch" in the Vulnerabilities tab first\n// to see the proposed fix here.';
+                        } else if (v.status === 'PATCHED') {
+                            diffContent = v.suggested_fix || '// Patch generated but diff not available\n// You can still validate this fix.';
+                        } else {
+                            diffContent = '// No patch data available';
+                        }
+                    }
+
+                    const statusStr = v.status || '';
+
+                    el.innerHTML = `
                 <div class="flex flex-col h-full">
                     <div class="mb-6 flex justify-between items-end">
                         <div class="glass p-6 rounded-2xl border-l-4 border-emerald-500 bg-black/40 inline-block">
                             <h3 class="text-2xl font-black text-white mb-1 tracking-tight">Remediation Analysis</h3>
-                            <p class="text-slate-400 text-xs">Review AI-proposed patch for threat <span class="text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded tracking-widest">${v.id}</span></p>
+                            <p class="text-slate-400 text-xs">Review AI-proposed patch for threat <span class="text-blue-400 font-mono bg-blue-500/10 px-2 py-0.5 rounded tracking-widest">${v.id || ''}</span></p>
                         </div>
                     </div>
                     
@@ -1315,22 +1335,22 @@
                             <div class="absolute top-0 right-0 w-64 h-64 bg-rose-500/5 blur-3xl rounded-full pointer-events-none"></div>
                             <div class="text-[10px] font-black tracking-[0.2em] text-rose-500 mb-4 uppercase flex justify-between items-center relative z-10 border-b border-rose-500/10 pb-4">
                                 <span class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)]"></div> Vulnerable Structure</span> 
-                                <span class="bg-rose-500/10 px-3 py-1 rounded shadow-sm text-rose-400">Risk Profile: ${v.risk_score}/10</span>
+                                <span class="bg-rose-500/10 px-3 py-1 rounded shadow-sm text-rose-400">Risk Profile: ${v.risk_score || 0}/10</span>
                             </div>
                             <div class="text-[11px] text-slate-500 mb-4 space-y-2 relative z-10 bg-black/20 p-4 rounded-xl font-mono tracking-wider">
                                 <div class="flex items-center justify-between group">
                                     <span><span class="text-slate-600 uppercase tracking-widest text-[9px]">Target:</span> <span class="text-blue-400">${v.url || 'LOCAL'}</span></span>
                                 </div>
                                 <div class="grid grid-cols-2 gap-4">
-                                    <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">File:</span> <span class="text-slate-300 font-bold">${v.website_name}</span></div>
-                                    <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">Line:</span> <span class="text-rose-400 font-bold">${v.line_number}</span></div>
+                                    <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">File:</span> <span class="text-slate-300 font-bold">${v.website_name || ''}</span></div>
+                                    <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">Line:</span> <span class="text-rose-400 font-bold">${v.line_number || 0}</span></div>
                                 </div>
                             </div>
                             <div class="bg-black/80 p-5 rounded-2xl border border-white/5 relative flex-1 flex flex-col shadow-inner z-10 overflow-hidden group">
                                 <div class="absolute left-0 top-0 bottom-0 w-8 bg-slate-900 border-r border-white/5 flex flex-col items-center pt-5 text-[9px] text-slate-600 font-mono">
                                     <span>1</span><span>2</span><span>3</span>
                                 </div>
-                                <pre class="text-rose-200 font-mono text-[11px] leading-relaxed overflow-auto flex-1 pl-10 pr-2">${v.code_snippet || '// No code snippet available'}</pre>
+                                <pre class="text-rose-200 font-mono text-[11px] leading-relaxed overflow-auto flex-1 pl-10 pr-2">${(v.code_snippet || '// No code snippet available').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
                             </div>
                         </div>
                         
@@ -1341,32 +1361,34 @@
                                 <span class="bg-emerald-500/10 px-3 py-1 rounded shadow-sm text-emerald-400">Confidence: ${Math.round((v.decision_score || 0.98) * 100)}%</span>
                             </div>
                             <div class="text-[11px] text-slate-400 mb-4 flex gap-6 relative z-10 bg-black/20 p-4 rounded-xl font-mono tracking-wider">
-                                <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">Vector:</span> <span class="text-emerald-400 font-bold ml-1">${v.vulnerability_type}</span></div>
-                                <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">Class:</span> <span class="text-amber-400 font-bold ml-1">${v.severity}</span></div>
+                                <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">Vector:</span> <span class="text-emerald-400 font-bold ml-1">${v.vulnerability_type || ''}</span></div>
+                                <div><span class="text-slate-600 uppercase tracking-widest text-[9px]">Class:</span> <span class="text-amber-400 font-bold ml-1">${v.severity || ''}</span></div>
                             </div>
                             <div class="bg-black/80 p-5 rounded-2xl border border-white/5 relative flex-1 flex flex-col shadow-inner z-10 overflow-hidden">
-                                <pre class="text-emerald-300 font-mono text-[11px] leading-relaxed overflow-auto flex-1">${diffContent}</pre>
+                                <pre class="text-emerald-300 font-mono text-[11px] leading-relaxed overflow-auto flex-1">${(diffContent || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
                             </div>
                             
                             <div class="mt-6 flex relative z-10">
-                                ${v.status === 'FIXED' ?
-                        '<div class="px-6 py-4 w-full text-center text-emerald-400 tracking-[0.2em] text-[10px] font-black border border-emerald-500/50 rounded-xl bg-emerald-900/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]">✓ SECURE DEPLOYMENT VALIDATED</div>' :
-                        v.status === 'FAILED' ?
-                            '<div class="px-6 py-4 w-full text-center text-rose-500 tracking-[0.2em] text-[10px] font-black border border-rose-500/50 rounded-xl bg-rose-900/30 shadow-[0_0_20px_rgba(244,63,94,0.2)]">⚠ AUTOMATION KERNEL PANIC</div>' :
-                            `<div class="px-6 py-4 w-full text-center text-blue-400 tracking-[0.2em] text-[10px] font-black border border-blue-500/50 rounded-xl bg-blue-900/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]">⚙ GENERATING LOGIC PATCH...</div>`
-                    }
+                                ${statusStr === 'FIXED' ?
+                            '<div class="px-6 py-4 w-full text-center text-emerald-400 tracking-[0.2em] text-[10px] font-black border border-emerald-500/50 rounded-xl bg-emerald-900/30 shadow-[0_0_20px_rgba(16,185,129,0.2)]">✓ SECURE DEPLOYMENT VALIDATED</div>' :
+                            statusStr === 'FAILED' ?
+                                '<div class="px-6 py-4 w-full text-center text-rose-500 tracking-[0.2em] text-[10px] font-black border border-rose-500/50 rounded-xl bg-rose-900/30 shadow-[0_0_20px_rgba(244,63,94,0.2)]">⚠ AUTOMATION KERNEL PANIC</div>' :
+                                `<div class="px-6 py-4 w-full text-center text-blue-400 tracking-[0.2em] text-[10px] font-black border border-blue-500/50 rounded-xl bg-blue-900/30 animate-pulse shadow-[0_0_20px_rgba(59,130,246,0.2)]">⚙ GENERATING LOGIC PATCH...</div>`
+                        }
                             </div>
                         </div>
                     </div>
                 </div>
             `;
+                } catch (e) { console.error("Patch Lab Exception:", e); }
             },
 
             renderTree(el) {
-                const vulns = pipelineState.vulnerabilities.filter(v => ['PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING', 'FIXED', 'VALIDATED'].includes(v.status));
+                try {
+                    const vulns = (pipelineState.vulnerabilities || []).filter(v => v && ['PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING', 'FIXED', 'VALIDATED'].includes(v.status || ''));
 
-                if (vulns.length === 0) {
-                    el.innerHTML = `
+                    if (vulns.length === 0) {
+                        el.innerHTML = `
                     <div class="flex flex-col items-center justify-center h-full text-center">
                         <div class="w-32 h-32 rounded-full border border-white/5 bg-black/40 flex items-center justify-center mb-6">
                             <i data-lucide="git-branch" class="w-12 h-12 text-slate-700"></i>
@@ -1374,14 +1396,14 @@
                         <h3 class="text-xl font-black text-white/50 tracking-widest uppercase">Awaiting Actionable Data</h3>
                         <p class="text-xs text-slate-500 mt-2 max-w-sm">The heuristic core requires completed mitigation cycles to extrapolate structural decision paradigms.</p>
                     </div>`;
-                    lucide.createIcons();
-                    return;
-                }
+                        lucide.createIcons();
+                        return;
+                    }
 
-                // Get all fixed/validated vulns sorted by most recent
-                const recentDecisions = vulns.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+                    // Get all fixed/validated vulns sorted by most recent
+                    const recentDecisions = vulns.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
 
-                const decisionLogs = recentDecisions.map((v, i) => `
+                    const decisionLogs = recentDecisions.map((v, i) => `
                     <div class="relative pl-12 pb-10 group ${i === recentDecisions.length - 1 ? '' : 'border-l-2 border-blue-500/20'}">
                         <div class="absolute left-0 top-0 -translate-x-1/2 w-6 h-6 rounded-full bg-blue-900 border-4 border-black flex items-center justify-center">
                             <div class="w-2 h-2 rounded-full bg-blue-400 group-hover:bg-emerald-400 group-hover:shadow-[0_0_10px_rgba(52,211,153,1)] transition-all"></div>
@@ -1403,20 +1425,20 @@
                                 <code>${(v.code_snippet || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code>
                             </div>
                             
-                            <div class="flex items-center gap-4 p-4 rounded-xl border text-sm ${v.status === 'FIXED' ? 'bg-emerald-900/10 border-emerald-500/10 text-emerald-400/90' : v.status === 'FAILED' ? 'bg-rose-900/10 border-rose-500/10 text-rose-400/90' : 'bg-blue-900/10 border-blue-500/10 text-blue-400/90'}">
-                                <i data-lucide="${v.status === 'FIXED' ? 'check-circle' : v.status === 'FAILED' ? 'x-circle' : 'refresh-cw'}" class="w-5 h-5 shrink-0 ${['PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(v.status) ? 'animate-spin' : ''}"></i>
+                            <div class="flex items-center gap-4 p-4 rounded-xl border text-sm ${(v.status || '') === 'FIXED' ? 'bg-emerald-900/10 border-emerald-500/10 text-emerald-400/90' : (v.status || '') === 'FAILED' ? 'bg-rose-900/10 border-rose-500/10 text-rose-400/90' : 'bg-blue-900/10 border-blue-500/10 text-blue-400/90'}">
+                                <i data-lucide="${(v.status || '') === 'FIXED' ? 'check-circle' : (v.status || '') === 'FAILED' ? 'x-circle' : 'refresh-cw'}" class="w-5 h-5 shrink-0 ${['PATCH_GENERATING', 'PATCH_APPLIED', 'VALIDATING'].includes(v.status || '') ? 'animate-spin' : ''}"></i>
                                 <span>${v.status === 'PATCH_GENERATING' ? 'Analyzing AST for logic mutation...' :
-                        v.status === 'PATCH_APPLIED' ? 'Synthesizing verified patch injection...' :
-                            v.status === 'VALIDATING' ? 'Running recursive validation context against injected patch...' :
-                                v.status === 'FAILED' ? 'Automated neural mediation failed. Manual review required.' :
-                                    (v.patch_explanation || 'AST manipulation patch successfully generated and structurally validated.')
-                    }</span>
+                            v.status === 'PATCH_APPLIED' ? 'Synthesizing verified patch injection...' :
+                                v.status === 'VALIDATING' ? 'Running recursive validation context against injected patch...' :
+                                    v.status === 'FAILED' ? 'Automated neural mediation failed. Manual review required.' :
+                                        (v.patch_explanation || 'AST manipulation patch successfully generated and structurally validated.')
+                        }</span>
                             </div>
                         </div>
                     </div>
                 `).join('');
 
-                el.innerHTML = `
+                    el.innerHTML = `
                 <div class="max-w-4xl mx-auto h-full overflow-y-auto pr-6 custom-scrollbar">
                     <div class="mb-10 sticky top-0 bg-[#050505]/90 backdrop-blur-xl py-6 z-10 border-b border-white/5">
                         <h3 class="text-3xl font-black text-white tracking-tight italic uppercase decoration-blue-500 decoration-2 underline-offset-8">Neural Decision Paradigms</h3>
@@ -1428,7 +1450,8 @@
                     </div>
                 </div>
                 `;
-                lucide.createIcons();
+                    lucide.createIcons();
+                } catch (e) { console.error("Tree render error", e); }
             },
 
             renderSystem(el) {
