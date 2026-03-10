@@ -1013,10 +1013,40 @@ def scan_website_task(url: str, session_id: str, app_name: str):
             }
             
             append_log(session_id, f"[SYSTEM] Scan complete. Found {found_count} vulnerabilities.", log_type="automation")
-            append_log(session_id, f"[SYSTEM] Awaiting manual authorization to begin Neural Remediation...", log_type="automation")
-            terminal_sessions[session_id]["status"] = "AWAITING_APPROVAL"
+            append_log(session_id, f"[AUTOMATION_KERNEL] Auto-queuing {found_count} vulnerabilities...", log_type="automation")
             
+            # Clear existing queue
+            while not patch_queue.empty():
+                try:
+                    patch_queue.get_nowait()
+                except queue.Empty:
+                    break
+            
+            # Queue each vulnerability in order
+            db_add = SessionLocal()
+            for i, v_id in enumerate(vuln_ids, 1):
+                vuln = db_add.query(Vulnerability).filter(Vulnerability.id == v_id).first()
+                if vuln and vuln.status == "DETECTED":
+                    vuln.status = "QUEUED_FOR_PATCH"
+                    patch_queue.put({"vuln_id": vuln.id, "scan_id": session_id, "status": "QUEUED"})
+                    append_log(session_id, f"[AUTOMATION_KERNEL] ({i}/{found_count}) Queued: {vuln.vulnerability_type} in {vuln.website_name}", log_type="automation")
+                    time.sleep(0.05) # Fast queuing
 
+            db_add.commit()
+            db_add.close()
+            trigger_pipeline_update()
+            
+            append_log(session_id, f"[AUTOMATION_KERNEL] Queue initialized with {patch_queue.qsize()} vulnerabilities", log_type="automation")
+            append_log(session_id, "[AUTOMATION_KERNEL] Starting remediation pipeline...", log_type="automation")
+            
+            # START AUTOMATION IMMEDIATELY
+            pipeline_paused_event.clear()
+            terminal_sessions[session_id]["status"] = "COMPLETED"
+            process_patch_queue()
+        else:
+            append_log(session_id, f"[SYSTEM] Domain secure. No actionable threats detected.", log_type="automation")
+            terminal_sessions[session_id]["status"] = "COMPLETED"
+    
     except Exception as e:
         append_log(session_id, f"Scan failed: {str(e)}", level="ERROR")
         terminal_sessions[session_id]["found_count"] = 0

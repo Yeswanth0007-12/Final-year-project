@@ -308,6 +308,8 @@
                         this.scanFinishedFlag = true;
                         if (data.found_count > 0) {
                             app.showToast(`✅ Scan Complete. Automation pipeline started for ${data.found_count} vulnerabilities`, 'emerald');
+                            // Automatically switch the UI to the pipeline log mode since it's fully autonomous now!
+                            app.switchTerminalMode('pipeline');
                         }
                     }
 
