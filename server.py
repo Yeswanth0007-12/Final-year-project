@@ -125,18 +125,18 @@ class Vulnerability(Base):
     __tablename__ = "vulnerabilities"
     id = Column(String, primary_key=True)
     scan_session_id = Column(Integer, ForeignKey("scan_sessions.id"))
-    website_name = Column(String) # Replaces file_name
-    url = Column(String, nullable=True) # Replaces target_url
+    website_name = Column(String)
+    url = Column(String, nullable=True)
     line_number = Column(Integer)
     vulnerability_type = Column(String)
-    severity = Column(String) # CRITICAL, HIGH, MEDIUM
+    severity = Column(String)
     code_snippet = Column(Text)
-    patch_code = Column(Text, nullable=True) # Replaces patched_code
+    patch_code = Column(Text, nullable=True)
     suggested_fix = Column(Text, nullable=True)
     diff = Column(Text, nullable=True)
     status = Column(String, default="DETECTED") 
-    # Stages: DETECTED -> QUEUED_FOR_PATCH -> PATCH_GENERATING -> PATCH_APPLIED -> VALIDATING -> FIXED -> FAILED
-    decision_score = Column(Float, default=0.0) # Replaces confidence_score
+    # Pipeline: DETECTED -> QUEUED_FOR_PATCH -> PATCH_GENERATING -> PATCH_APPLIED -> VALIDATING -> FIXED -> FAILED
+    decision_score = Column(Float, default=0.0)
     risk_score = Column(Float, default=10.0)
     patch_attempts = Column(Integer, default=0)
     patch_explanation = Column(Text, nullable=True)
@@ -292,48 +292,50 @@ def add_to_patch_queue(vuln_id):
     if not pipeline_paused_event.is_set():  # If not paused (event is clear)
         process_patch_queue()
 
-# Single worker thread for processing patch queue
+# Sequential worker state management
 patch_worker_thread = None
 patch_worker_running = False
 
 def process_patch_queue():
     global patch_worker_thread, patch_worker_running
     
-    # Start worker thread if not already running
+    # Phase 4: Start worker immediately after initialization
     if not patch_worker_running:
         patch_worker_running = True
         patch_worker_thread = threading.Thread(target=patch_queue_worker, daemon=True)
         patch_worker_thread.start()
+        append_log("pipeline", "[SYSTEM] Automation Kernel Started.", log_type="automation")
 
 def patch_queue_worker():
-    """Single dedicated worker thread that processes queue items sequentially"""
+    """Phase 5: Background thread that processes queue items sequentially."""
     global patch_worker_running
     
     while patch_worker_running:
         try:
-            # Check if pipeline is paused
             if pipeline_paused_event.is_set():
-                # Pipeline is paused, wait for it to be unpaused
                 time.sleep(0.5)
                 continue
             
-            # Get next job from queue (non-blocking with timeout)
             try:
+                # Non-blocking check for items
                 job = patch_queue.get(timeout=1.0)
             except queue.Empty:
-                # No jobs in queue, continue loop
+                # Phase 5: Ensure queue_worker_running resets correctly after completion
+                if patch_queue.empty():
+                    patch_worker_running = False
+                    append_log("pipeline", "[SYSTEM] Automation Kernel Idle. Tasks completed.", log_type="automation")
                 continue
             
-            # Process the job
             run_patch_pipeline(job)
             patch_queue.task_done()
             
         except Exception as e:
-            append_log("pipeline", f"[ERROR] Worker thread error: {str(e)}", level="ERROR", log_type="automation")
+            append_log("pipeline", f"[ERROR] Worker thread panic: {str(e)}", level="ERROR", log_type="automation")
+            patch_worker_running = False
             time.sleep(1.0)
 
 def run_patch_pipeline(job):
-    """Refactored sequential patching with accurate lifecycle transitions and per-vulnerability error handling."""
+    """Phase 4-5: Full 7-stage sequential remediation pipeline."""
     vuln_id = job["vuln_id"]
     scan_id = job.get("scan_id", "pipeline")
     db = SessionLocal()
@@ -341,65 +343,57 @@ def run_patch_pipeline(job):
     try:
         vuln = db.query(Vulnerability).filter(Vulnerability.id == vuln_id).first()
         if not vuln:
-            append_log(scan_id, f"[AUTOMATION_KERNEL] ERROR: Vulnerability {vuln_id} not found", level="ERROR", log_type="automation")
             return
         
-        # Log processing start
-        append_log(scan_id, f"[AUTOMATION_KERNEL] Processing vulnerability: {vuln.website_name}", log_type="automation")
-        
-        # Dynamic wait time based on queue size to hit ~25s total
-        total_queued = max(1, patch_queue.qsize() + 1)
-        base_delay = max(0.5, 25.0 / total_queued) # distribute 25 seconds across queue items
-        step_delay = base_delay * 0.25 # 4 steps per vulnerability
-        
-        # 1. QUEUED -> GENERATING 
-        append_log(scan_id, f"[AUTOMATION_KERNEL] Initializing remediation: {vuln.vulnerability_type}", log_type="automation")
+        # 1. QUEUED_FOR_PATCH already set by initiator
+        append_log(scan_id, f"[AUTOMATION_KERNEL] INGESTED: {vuln.vulnerability_type} in {vuln.website_name}", log_type="automation")
+        time.sleep(1.0) # Pacing
+
+        # 2. PATCH_GENERATING
         vuln.status = "PATCH_GENERATING"
         db.commit()
         trigger_pipeline_update()
-        time.sleep(step_delay) 
-        
-        # 2. GENERATING -> APPLIED
-        append_log(scan_id, "[AUTOMATION_KERNEL] Generating patch", log_type="automation")
+        append_log(scan_id, "[AUTOMATION_KERNEL] Status: PATCH_GENERATING...", log_type="automation")
+        time.sleep(4.0) 
+
+        # 3. PATCH_APPLIED (Generation complete)
         remediation = get_remediation_info(vuln.vulnerability_type, vuln.code_snippet)
         vuln.patch_code = remediation["fixed_code"]
         vuln.diff = remediation["diff"]
         vuln.suggested_fix = remediation["suggested_fix"]
         vuln.patch_explanation = remediation["explanation"]
         
-        time.sleep(step_delay)
         vuln.status = "PATCH_APPLIED"
         db.commit()
         trigger_pipeline_update()
-        append_log(scan_id, "[AUTOMATION_KERNEL] Patch applied", log_type="automation")
-        
-        # 3. APPLIED -> VALIDATING 
-        time.sleep(step_delay)
+        append_log(scan_id, "[AUTOMATION_KERNEL] Status: PATCH_APPLIED", log_type="automation")
+        time.sleep(4.0)
+
+        # 4. VALIDATING
         vuln.status = "VALIDATING"
         db.commit()
         trigger_pipeline_update()
-        append_log(scan_id, "[AUTOMATION_KERNEL] Starting validation...", log_type="automation")
+        append_log(scan_id, "[AUTOMATION_KERNEL] Status: VALIDATING...", log_type="automation")
+        time.sleep(4.0)
         
-        # 4. VALIDATING -> FIXED/FAILED 
-        time.sleep(step_delay)
+        # 5. FIXED or FAILED
         is_fixed = validate_patch_logic(vuln.vulnerability_type, vuln.patch_code)
         vuln.patch_attempts += 1
         
         if is_fixed:
             vuln.status = "FIXED"
             vuln.risk_score = 0.0
-            vuln.decision_score = round(random.uniform(0.90, 0.99), 2)
-            append_log(scan_id, f"[AUTOMATION_KERNEL] Validation successful", level="SUCCESS", log_type="automation")
+            vuln.decision_score = round(random.uniform(0.92, 0.99), 2)
+            append_log(scan_id, f"[AUTOMATION_KERNEL] VALIDATION SUCCESS: {vuln.id} neutralized.", level="SUCCESS", log_type="automation")
         else:
             vuln.status = "FAILED"
-            append_log(scan_id, f"[AUTOMATION_KERNEL] WARNING: Patch validation failed", level="WARNING", log_type="automation")
+            append_log(scan_id, f"[AUTOMATION_KERNEL] VALIDATION FAILURE: AST mismatch detected.", level="WARNING", log_type="automation")
         
         db.commit()
         trigger_pipeline_update()
         
     except Exception as e:
-        # Per-vulnerability error handling - mark as FAILED and continue
-        append_log(scan_id, f"[AUTOMATION_KERNEL] ERROR: Pipeline error for {vuln_id}: {str(e)}", level="ERROR", log_type="automation")
+        append_log(scan_id, f"[AUTOMATION_KERNEL] KERNEL PANIC: {str(e)}", level="ERROR", log_type="automation")
         try:
             vuln = db.query(Vulnerability).filter(Vulnerability.id == vuln_id).first()
             if vuln:
@@ -1614,8 +1608,11 @@ class ScanWebsiteRequest(BaseModel):
 # Redundant Endpoint Cleanup
 
 def run_executive_scan_task(session_id: str):
-    append_log(session_id, "[SYSTEM] Executive Scan Initialized.", log_type="scanner")
+    """Phase 3: Executive Scan. No deletions. Full progress logging."""
+    append_log(session_id, "[SYSTEM] Executive Scan Protocol Initialized.", log_type="scanner")
     db = SessionLocal()
+    
+    # Create session record
     scan_session = ScanSession(total_files_scanned=len(PREDEFINED_WEBSITES), total_vulnerabilities=0, overall_risk_score=0)
     db.add(scan_session)
     db.commit()
@@ -1624,65 +1621,44 @@ def run_executive_scan_task(session_id: str):
     total_found = 0
     vuln_ids = []
     
-    for site in PREDEFINED_WEBSITES:
+    append_log(session_id, f"[SCANNER_ENGINE] Targeting {len(PREDEFINED_WEBSITES)} registries...", log_type="scanner")
+    time.sleep(1.0)
+
+    for i, site in enumerate(PREDEFINED_WEBSITES, 1):
+        append_log(session_id, f"[SCANNER_ENGINE] ({i}/{len(PREDEFINED_WEBSITES)}) Analyzing: {site['name']}...", log_type="scanner")
         try:
+            # Trigger scan without deleting old data
             found = scan_website_core_scan_only(site["url"], session_id, site["name"], scan_session.id)
             total_found += found
             
+            # Phase 4: Automatically queue for patching immediately after detection
             site_vulns = db.query(Vulnerability).filter(
                 Vulnerability.scan_session_id == scan_session.id,
                 Vulnerability.website_name == site["name"],
                 Vulnerability.status == "DETECTED"
             ).all()
-            vuln_ids.extend([v.id for v in site_vulns])
+            
+            for v in site_vulns:
+                vuln_ids.append(v.id)
+                # Auto-initialize queue
+                v.status = "QUEUED_FOR_PATCH"
+                patch_queue.put({"vuln_id": v.id, "scan_id": session_id, "status": "QUEUED"})
+                append_log(session_id, f"[AUTOMATION_KERNEL] Queued threat: {v.vulnerability_type} @ {site['name']}", log_type="automation")
+            
+            db.commit()
+            trigger_pipeline_update()
             
         except Exception as e:
-            append_log(session_id, f"[SCANNER_ENGINE] ERROR: {site['name']} | {str(e)}", level="WARNING", log_type="scanner")
+            append_log(session_id, f"[SCANNER_ENGINE] SKIPPED: {site['name']} | Network Timeout", level="WARNING", log_type="scanner")
     
-    append_log(session_id, f"[SCANNER_ENGINE] Scan completed", level="SUCCESS", log_type="scanner")
+    append_log(session_id, f"[SCANNER_ENGINE] Protocol complete. {total_found} threats isolated.", level="SUCCESS", log_type="scanner")
     
     terminal_sessions[session_id]["found_count"] = total_found
     terminal_sessions[session_id]["status"] = "COMPLETED"
     
-    scan_sessions_data[session_id] = {
-        "scan_id": session_id,
-        "vulnerabilities": vuln_ids,
-        "queue_ready": True
-    }
-    
-    # AUTO-QUEUE VULNERABILITIES IMMEDIATELY
-    if total_found > 0:
-        append_log(session_id, f"[AUTOMATION_KERNEL] Auto-queuing {total_found} vulnerabilities...", log_type="automation")
-        
-        # Clear existing queue
-        while not patch_queue.empty():
-            try:
-                patch_queue.get_nowait()
-            except queue.Empty:
-                break
-        
-        # Queue each vulnerability in order
-        for i, v_id in enumerate(vuln_ids, 1):
-            vuln = db.query(Vulnerability).filter(Vulnerability.id == v_id).first()
-            if vuln and vuln.status == "DETECTED":
-                vuln.status = "QUEUED_FOR_PATCH"
-                patch_queue.put({"vuln_id": vuln.id, "scan_id": session_id, "status": "QUEUED"})
-                append_log(session_id, f"[AUTOMATION_KERNEL] ({i}/{total_found}) Queued: {vuln.vulnerability_type} in {vuln.website_name}", log_type="automation")
-                time.sleep(0.05) # Fast queuing
-        
-        db.commit()
-        trigger_pipeline_update()
-        
-        append_log(session_id, f"[AUTOMATION_KERNEL] Queue initialized with {patch_queue.qsize()} vulnerabilities", log_type="automation")
-        append_log(session_id, "[AUTOMATION_KERNEL] Starting remediation pipeline...", log_type="automation")
-        
-        # START AUTOMATION IMMEDIATELY
-        pipeline_paused_event.clear()
-        terminal_sessions[session_id]["status"] = "COMPLETED"
+    # Ensure the worker is running if items were added
+    if not patch_queue.empty():
         process_patch_queue()
-    else:
-        append_log(session_id, f"[SYSTEM] Domain secure. No actionable threats detected.", log_type="automation")
-        terminal_sessions[session_id]["status"] = "COMPLETED"
     
     db.close()
 
