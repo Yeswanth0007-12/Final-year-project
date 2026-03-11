@@ -528,11 +528,10 @@
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ rating: 5, comment: comment })
                         });
-                        this.showToast("Feedback Submitted!", 'emerald');
+                        this.showToast("✅ Feedback Submitted!", 'emerald');
                         await pipelineState.fetchAll();
-                        if (router.current === 'feedback') {
-                            this.renderFeedback(document.getElementById('viewport'));
-                        }
+                        // Always navigate to feedback tab so user sees their entry
+                        router.go('feedback');
                     } catch (e) {
                         this.showToast("Failed to submit feedback", 'rose');
                     }
@@ -578,9 +577,8 @@
                     else if (page === 'decision-tree') this.updateTreeDynamic(viewport);
                     else if (page === 'system-core') this.updateSystemDynamic(viewport);
                     else if (page === 'patch-lab') this.updatePatchLabDynamic(viewport);
-                    else if (page === 'website-scanner') {
-                        this.updateWebsiteScannerDynamic(viewport);
-                    }
+                    else if (page === 'website-scanner') this.updateWebsiteScannerDynamic(viewport);
+                    else if (page === 'feedback') this.updateFeedbackDynamic(viewport);
                 }
 
                 this.renderGlobalOverlays();
