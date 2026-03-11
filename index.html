@@ -325,8 +325,8 @@
                         }
                     }
 
-                    // Only trigger render update if there are new logs to minimize reflows
-                    if (router.current === 'terminal' && (this.scanHasNewLogs || this.pipeHasNewLogs)) {
+                    // Always trigger render when on terminal — keeps logs visible even after completion
+                    if (router.current === 'terminal') {
                         app.renderTerminalOnly();
                     }
                 } catch (e) { console.error("Terminal Sync Error", e); }
@@ -423,9 +423,8 @@
                         }
                     }
 
-                    if (router.current === 'terminal' || pipelineState.scanStatus === 'RUNNING' || pipelineState.queuingActive) {
-                        pipelineState.fetchTerminal();
-                    }
+                // Always fetch terminal logs — never stop, even after completion
+                    pipelineState.fetchTerminal();
                 }, 1000);
             },
 
@@ -1010,91 +1009,83 @@
             },
 
             updateTerminalLogs() {
-                const terminalBody = document.getElementById('terminal-logs-body');
-                if (!terminalBody) return;
+                // Route to the correct container based on current terminal mode
+                const mode = this.terminalMode || 'scan';
+                const containerId = mode === 'scan' ? 'scanner-logs-container' : 'pipeline-logs-container';
+                const body = document.getElementById(containerId);
+                if (!body) return; // Not on terminal page
 
-                const logsSource = (router.currentTerminalMode === 'pipeline')
-                    ? pipelineState.pipelineLogs
-                    : pipelineState.terminalLogs;
+                const logs = mode === 'scan' ? (pipelineState.terminalLogs || []) : (pipelineState.pipelineLogs || []);
 
-                if (!logsSource || !Array.isArray(logsSource)) return;
+                if (!this.renderedIndices) this.renderedIndices = {};
+                if (typeof this.renderedIndices[mode] === 'undefined') this.renderedIndices[mode] = 0;
 
-                // Ensure app.renderedLogIndices is initialized for the current mode
-                if (!app.renderedLogIndices) app.renderedLogIndices = {};
-                if (typeof app.renderedLogIndices[router.currentTerminalMode] === 'undefined') {
-                    app.renderedLogIndices[router.currentTerminalMode] = 0;
+                const cur = this.renderedIndices[mode];
+
+                // If log array has shrunk (new session reset), clear and start fresh
+                if (cur > logs.length) {
+                    body.innerHTML = '';
+                    this.renderedIndices[mode] = 0;
                 }
 
-                const currentRenderedCount = app.renderedLogIndices[router.currentTerminalMode];
+                const unrendered = logs.slice(cur);
 
-                // Optimization: only clear if source is actually reset/smaller and session is NOT completed
-                // OR if it's a completely different session.
-                // This prevents clearing logs when switching modes or when a scan completes and then new logs come in for a different mode.
-                if (currentRenderedCount > logsSource.length && pipelineState.scanStatus !== 'COMPLETED') {
-                    terminalBody.innerHTML = '';
-                    app.renderedLogIndices[router.currentTerminalMode] = 0;
-                }
-
-                const unrenderedLogs = logsSource.slice(currentRenderedCount);
-
-                const logsHTML = unrenderedLogs.map(log => {
-                    const level = log.level || 'INFO';
-                    const msg = (log.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                    const time = log.timestamp || '';
-
-                    let badgeColor, textColor, bgColor;
-                    if (level === 'ERROR') {
-                        badgeColor = 'bg-rose-500 text-white';
-                        textColor = 'text-rose-300';
-                        bgColor = 'bg-rose-500/5 border-rose-500/20';
-                    } else if (level === 'WARNING') {
-                        badgeColor = 'bg-amber-500 text-black';
-                        textColor = 'text-amber-300';
-                        bgColor = 'bg-amber-500/5 border-amber-500/20';
-                    } else if (level === 'SUCCESS') {
-                        badgeColor = 'bg-emerald-500 text-black';
-                        textColor = 'text-emerald-300';
-                        bgColor = 'bg-emerald-500/5 border-emerald-500/20';
-                    } else {
-                        badgeColor = 'bg-blue-600 text-white';
-                        textColor = 'text-slate-300';
-                        bgColor = 'border-white/5';
-                    }
-
-                    return `<div class="mb-2 font-mono text-sm flex items-start gap-3 px-3 py-2 rounded-xl border ${bgColor}">
-                        <span class="text-slate-500 shrink-0 font-bold text-xs w-[4.5rem] mt-0.5">[${time}]</span>
-                        <span class="shrink-0 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${badgeColor}">${level}</span>
-                        <span class="${textColor} text-sm leading-snug break-all">${msg}</span>
-                    </div>`;
-                }).join('');
-
-                if (logsHTML) {
+                if (unrendered.length > 0) {
                     // Remove placeholder if present
-                    if (terminalBody.querySelector('.animate-pulse')) {
-                        terminalBody.innerHTML = '';
-                    }
+                    if (body.querySelector('.animate-pulse')) body.innerHTML = '';
 
-                    terminalBody.insertAdjacentHTML('beforeend', logsHTML);
-                    app.renderedLogIndices[router.currentTerminalMode] = logsSource.length; // Update rendered count
-                    terminalBody.scrollTop = terminalBody.scrollHeight; // Auto-scroll
-                } else if (logsSource.length === 0) {
-                    const placeholder = router.currentTerminalMode === 'scan'
-                        ? '<div class="text-blue-500/50 animate-pulse font-black text-base tracking-widest py-4">▶ Awaiting scanner directives... Click Executive Scan to begin.</div>'
-                        : '<div class="text-emerald-500/50 animate-pulse font-black text-base tracking-widest py-4">▶ Awaiting automation kernel start... Scan must complete first.</div>';
-                    terminalBody.innerHTML = placeholder;
+                    const html = unrendered.map(log => {
+                        const level = (log.level || 'INFO').toUpperCase();
+                        const time = log.timestamp || '';
+                        const msg = (log.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+                        let badgeColor, textColor, bgColor;
+                        if (level === 'ERROR') {
+                            badgeColor = 'bg-rose-500 text-white';
+                            textColor = 'text-rose-300';
+                            bgColor = 'bg-rose-500/5 border-rose-500/20';
+                        } else if (level === 'WARNING') {
+                            badgeColor = 'bg-amber-500 text-black';
+                            textColor = 'text-amber-300';
+                            bgColor = 'bg-amber-500/5 border-amber-500/20';
+                        } else if (level === 'SUCCESS') {
+                            badgeColor = 'bg-emerald-500 text-black';
+                            textColor = 'text-emerald-300';
+                            bgColor = 'bg-emerald-500/5 border-emerald-500/20';
+                        } else {
+                            badgeColor = 'bg-blue-600 text-white';
+                            textColor = 'text-slate-200';
+                            bgColor = 'border-white/5';
+                        }
+
+                        return `<div class="mb-2 flex gap-3 items-start px-3 py-2 rounded-xl border ${bgColor}">
+                            <span class="text-slate-500 shrink-0 font-bold text-xs w-[4.5rem] mt-0.5">[${time}]</span>
+                            <span class="shrink-0 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${badgeColor}">${level}</span>
+                            <span class="${textColor} text-sm leading-snug break-all flex-1">${msg}</span>
+                        </div>`;
+                    }).join('');
+
+                    body.insertAdjacentHTML('beforeend', html);
+                    this.renderedIndices[mode] = logs.length;
+                    body.scrollTop = body.scrollHeight;
+                } else if (logs.length === 0 && !body.innerHTML.trim()) {
+                    // Show placeholder only if truly empty
+                    const emptyMsg = mode === 'scan'
+                        ? `<div class="text-blue-500/60 animate-pulse font-black text-base py-4">▶ Scanner Logic ready. Click "Executive Scan Protocol" to begin.</div>`
+                        : `<div class="text-emerald-500/60 animate-pulse font-black text-base py-4">▶ Automation Kernel standby. Waiting for scan to complete...</div>`;
+                    body.innerHTML = emptyMsg;
                 }
+                // If logs.length > 0 but nothing unrendered, do nothing \u2014 existing logs stay visible
 
-                // Detect all-done state in pipeline mode and show toast once
-                if (router.currentTerminalMode === 'pipeline' && !this._pipelineDoneToastShown) {
+                // Show completion toast once when all vulnerabilities are fixed
+                if (mode === 'pipeline' && !this._pipelineDoneToastShown) {
                     const allDone = pipelineState.vulnerabilities.length > 0 &&
                         pipelineState.vulnerabilities.every(v => v.status === 'FIXED' || v.status === 'VALIDATED' || v.status === 'FAILED');
-                    const noPipeline = !pipelineState.activeJob && pipelineState.queue && pipelineState.queue.length === 0;
-                    if (allDone && noPipeline) {
+                    if (allDone && !pipelineState.activeJob) {
                         this._pipelineDoneToastShown = true;
                         this.showToast('✅ All vulnerabilities processed. Pipeline complete!', 'emerald');
                     }
                 }
-                // Reset flag when new jobs come in
                 if (pipelineState.activeJob || (pipelineState.queue && pipelineState.queue.length > 0)) {
                     this._pipelineDoneToastShown = false;
                 }
@@ -1545,68 +1536,6 @@
                         </div>
                     </div>`;
                 this.updateTerminalLogs();
-            },
-
-            updateTerminalLogs() {
-                const mode = this.terminalMode || 'scan';
-                const containerId = mode === 'scan' ? 'scanner-logs-container' : 'pipeline-logs-container';
-                const body = document.getElementById(containerId);
-                if (!body) return;
-                
-                const logs = mode === 'scan' ? pipelineState.terminalLogs : pipelineState.pipelineLogs;
-                if (!this.renderedIndices) this.renderedIndices = {};
-                if (typeof this.renderedIndices[mode] === 'undefined') this.renderedIndices[mode] = 0;
-                
-                const cur = this.renderedIndices[mode];
-                const unrendered = logs.slice(cur);
-                
-                // Only clear if the logs list is reset (e.g. for a brand new session, but usually we just append)
-                if (cur > logs.length) { body.innerHTML = ''; this.renderedIndices[mode] = 0; }
-                
-                if (unrendered.length > 0) {
-                    const html = unrendered.map(log => {
-                        const level = (log.level || 'INFO').toUpperCase();
-                        const time = log.timestamp || new Date().toLocaleTimeString('en-GB', { hour12: false });
-                        const msg = (log.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-                        let badgeColor, textColor, bgColor;
-                        if (level === 'ERROR') {
-                            badgeColor = 'bg-rose-500 text-white';
-                            textColor = 'text-rose-300';
-                            bgColor = 'bg-rose-500/5 border-rose-500/20';
-                        } else if (level === 'WARNING') {
-                            badgeColor = 'bg-amber-500 text-black';
-                            textColor = 'text-amber-300';
-                            bgColor = 'bg-amber-500/5 border-amber-500/20';
-                        } else if (level === 'SUCCESS') {
-                            badgeColor = 'bg-emerald-500 text-black';
-                            textColor = 'text-emerald-300';
-                            bgColor = 'bg-emerald-500/5 border-emerald-500/20';
-                        } else {
-                            badgeColor = 'bg-blue-600 text-white';
-                            textColor = 'text-slate-200';
-                            bgColor = 'border-white/5';
-                        }
-
-                        return `<div class="mb-2 flex gap-3 items-start px-3 py-2 rounded-xl border ${bgColor} opacity-0 animate-in fade-in slide-in-from-left-2 duration-300">
-                            <span class="text-slate-500 shrink-0 font-bold text-xs w-[4.5rem] mt-0.5">[${time}]</span>
-                            <span class="shrink-0 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${badgeColor}">${level}</span>
-                            <span class="${textColor} text-sm leading-snug break-all flex-1">${msg}</span>
-                        </div>`;
-                    }).join('');
-                    
-                    // Remove placeholder if present
-                    if (body.querySelector('.animate-pulse')) body.innerHTML = '';
-                    
-                    body.insertAdjacentHTML('beforeend', html);
-                    this.renderedIndices[mode] = logs.length;
-                    body.scrollTop = body.scrollHeight;
-                } else if (logs.length === 0 && !body.innerHTML.trim()) {
-                    const emptyMsg = mode === 'scan'
-                        ? `<div class="text-blue-500/60 animate-pulse font-black text-base py-4">▶ Scanner Logic ready. Click "Executive Scan Protocol" to begin.</div>`
-                        : `<div class="text-emerald-500/60 animate-pulse font-black text-base py-4">▶ Automation Kernel standby. Waiting for scan to complete...</div>`;
-                    body.innerHTML = emptyMsg;
-                }
             },
 
             switchTerminalMode(mode) {
