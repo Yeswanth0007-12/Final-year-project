@@ -938,7 +938,7 @@
                 const total = vulns.length;
                 const fixed = vulns.filter(v => v.status === 'FIXED').length;
 
-                const percent = total > 0 ? Math.round((fixed / total) * 100) : 0;
+                const percent = total > 0 ? Math.round((fixed / total) * 100) : (pipelineState.scanStatus === 'RUNNING' ? 5 : 0);
 
                 const bar = document.getElementById('pipeline-progress-bar');
                 const labelLarge = document.getElementById('pipeline-percent-large');
@@ -979,7 +979,7 @@
                                 const icon = el.querySelector('i, svg');
                                 if (i < currentStep) {
                                     el.className = 'flex flex-col items-center gap-3 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 opacity-100 shadow-[0_0_20px_rgba(16,185,129,0.1)] transition-all duration-500';
-                                    if (icon) icon.className.baseVal = 'lucide lucide-check-circle-2 w-5 h-5 text-emerald-400';
+                                    if (icon) icon.className.baseVal = 'lucide lucide-check-circle w-5 h-5 text-emerald-400';
                                 } else if (i === currentStep) {
                                     el.className = 'flex flex-col items-center gap-3 p-4 rounded-2xl bg-blue-600/20 border border-blue-500/50 opacity-100 shadow-[0_0_25px_rgba(59,130,246,0.3)] animate-pulse transition-all duration-500';
                                     if (icon) icon.className.baseVal = 'lucide lucide-cpu w-5 h-5 text-blue-400 animate-bounce';
@@ -1119,26 +1119,19 @@
                             
                             return `
                             <tr class="border-b border-white/[0.02] hover:bg-white/[0.01] transition-colors group">
-                                <td class="p-8 font-mono text-[10px] text-blue-500/80 font-black tracking-widest">${v.id || 'WEB-00000'}</td>
+                                <td class="p-8">
+                                    <div class="text-white font-black text-sm mb-1 tracking-tight italic uppercase">${v.website_name || 'TARGET SOURCE'}</div>
+                                </td>
                                 <td class="p-8">
                                     <div class="text-white font-black text-sm mb-1 tracking-tight italic uppercase">${v.vulnerability_type || 'VULNERABILITY'}</div>
-                                    <div class="text-[9px] text-slate-500 font-black uppercase tracking-[0.2em] leading-none">${v.website_name || 'TARGET SOURCE'}</div>
                                 </td>
-                                <td class="p-8">
-                                    <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] bg-rose-500/10 text-rose-500 border border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.1)]">
-                                        <i data-lucide="shield-alert" class="w-2.5 h-2.5 mr-2"></i> ${v.severity || 'HIGH'}
-                                    </span>
-                                </td>
-                                <td class="p-8">
-                                    <div class="bg-black/40 px-4 py-2.5 rounded-xl border border-white/5 text-[10px] font-mono text-slate-400 truncate max-w-[240px]">
-                                        ${v.url || 'https://internal-kernel-source.sh'}
-                                    </div>
-                                </td>
+                                <td class="p-8 font-mono text-[10px] text-blue-500/80 font-black tracking-widest">${v.line_number || '0'}</td>
                                 <td class="p-8">
                                     <div class="px-6 py-2.5 rounded-full bg-blue-600/10 border border-blue-500/30 text-blue-400 text-[10px] font-black uppercase tracking-[0.2em] text-center shadow-[0_0_20px_rgba(59,130,246,0.15)] animate-pulse">
                                         ${statusStr}
                                     </div>
                                 </td>
+                                <td class="p-8 font-mono text-[10px] text-emerald-500 font-black tracking-widest">${(v.decision_score || 0.0).toFixed(2)}</td>
                                 <td class="p-8 text-right">
                                     <div class="flex items-center justify-end gap-3">
                                         <button onclick="app.showIntelligenceHUD('${v.id}')" class="p-2.5 rounded-xl bg-white/5 hover:bg-blue-600 border border-white/10 hover:border-blue-400 text-slate-400 hover:text-white transition-all shadow-lg">
@@ -1181,26 +1174,19 @@
                         
                         return `
                         <tr class="border-b border-white/[0.02] hover:bg-white/[0.01] transition-colors group">
-                            <td class="p-8 font-mono text-[10px] text-blue-500/80 font-black tracking-widest">${v.id || 'WEB-00000'}</td>
+                            <td class="p-8">
+                                <div class="text-white font-black text-sm mb-1 tracking-tight italic uppercase">${v.website_name || 'TARGET SOURCE'}</div>
+                            </td>
                             <td class="p-8">
                                 <div class="text-white font-black text-sm mb-1 tracking-tight italic uppercase">${v.vulnerability_type || 'VULNERABILITY'}</div>
-                                <div class="text-[9px] text-slate-500 font-black uppercase tracking-[0.2em] leading-none">${v.website_name || 'TARGET SOURCE'}</div>
                             </td>
-                            <td class="p-8">
-                                <span class="inline-flex items-center px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-[0.2em] bg-rose-500/10 text-rose-500 border border-rose-500/20 shadow-[0_0_15px_rgba(244,63,94,0.1)]">
-                                    <i data-lucide="shield-alert" class="w-2.5 h-2.5 mr-2"></i> ${v.severity || 'HIGH'}
-                                </span>
-                            </td>
-                            <td class="p-8">
-                                <div class="bg-black/40 px-4 py-2.5 rounded-xl border border-white/5 text-[10px] font-mono text-slate-400 truncate max-w-[240px]">
-                                    ${v.url || 'https://internal-kernel-source.sh'}
-                                </div>
-                            </td>
+                            <td class="p-8 font-mono text-[10px] text-blue-500/80 font-black tracking-widest">${v.line_number || '0'}</td>
                             <td class="p-8">
                                 <div class="px-6 py-2.5 rounded-full bg-blue-600/10 border border-blue-500/30 text-blue-400 text-[10px] font-black uppercase tracking-[0.2em] text-center shadow-[0_0_20px_rgba(59,130,246,0.15)] animate-pulse">
                                     ${statusStr}
                                 </div>
                             </td>
+                            <td class="p-8 font-mono text-[10px] text-emerald-500 font-black tracking-widest">${(v.decision_score || 0.0).toFixed(2)}</td>
                             <td class="p-8 text-right">
                                 <div class="flex items-center justify-end gap-3">
                                     <button onclick="app.showIntelligenceHUD('${v.id}')" class="p-2.5 rounded-xl bg-white/5 hover:bg-blue-600 border border-white/10 hover:border-blue-400 text-slate-400 hover:text-white transition-all shadow-lg">
@@ -1235,11 +1221,11 @@
                                     <table class="w-full text-left border-collapse">
                                         <thead class="bg-black/60 text-[10px] text-slate-500 font-black uppercase tracking-[0.4em] sticky top-0 z-10 border-b border-white/5">
                                             <tr>
-                                                <th class="p-8">Registry ID</th>
-                                                <th class="p-8">Vulnerability Vector</th>
-                                                <th class="p-8">Severity</th>
-                                                <th class="p-8">Source Endpoint</th>
-                                                <th class="p-8 text-center">Kernel Status</th>
+                                                <th class="p-8">Website Name</th>
+                                                <th class="p-8">Vulnerability Type</th>
+                                                <th class="p-8">Line Number</th>
+                                                <th class="p-8 text-center">Status</th>
+                                                <th class="p-8">Decision Score</th>
                                                 <th class="p-8 text-right">Matrix Directives</th>
                                             </tr>
                                         </thead>
@@ -1397,10 +1383,13 @@
                                 <div class="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all shadow-xl">
                                     <i data-lucide="globe" class="w-7 h-7"></i>
                                 </div>
-                                <div>
+                                <div class="flex-1">
                                     <h4 class="text-white font-black text-lg italic uppercase tracking-tighter">${s.name}</h4>
                                     <div class="text-[9px] text-slate-500 font-black uppercase tracking-widest">SID: ${s.id}</div>
                                 </div>
+                                <button onclick="app.copyToClipboard('${s.url}')" class="p-2 rounded-lg bg-white/5 hover:bg-blue-500/20 border border-white/10 text-slate-400 hover:text-blue-400 transition-all" title="Copy URL">
+                                    <i data-lucide="copy" class="w-4 h-4"></i>
+                                </button>
                             </div>
                             <div class="bg-black/60 rounded-2xl p-5 mb-8 border border-white/5 font-mono text-[10px] text-blue-400/80 truncate">${s.url}</div>
                         </div>
@@ -1417,6 +1406,11 @@
                                 <div class="flex gap-4 p-2 bg-black/60 border border-white/10 rounded-3xl focus-within:border-rose-500/50 transition-all">
                                     <input id="custom-url-registry" type="url" placeholder="https://external-target.com" class="bg-transparent flex-1 px-6 font-mono text-sm text-white outline-none">
                                     <button onclick="pipelineState.scanWebsite(document.getElementById('custom-url-registry').value)" class="bg-rose-600 text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-500 transition-all shadow-xl">Engage Target</button>
+                                </div>
+                                <div class="mt-2 flex justify-end">
+                                    <button onclick="app.pasteTargetUrl()" class="text-[9px] font-bold text-slate-500 hover:text-blue-400 uppercase tracking-widest flex items-center gap-2">
+                                        <i data-lucide="clipboard" class="w-3 h-3"></i> Quick Paste
+                                    </button>
                                 </div>
                             </div>
                             <button onclick="pipelineState.executiveScan()" class="bg-white text-black font-black uppercase tracking-[0.3em] px-10 py-6 rounded-3xl hover:bg-blue-500 hover:text-white transition-all shadow-2xl">Executive Scan Protocol</button>
@@ -1467,16 +1461,20 @@
                                     <span class="text-[9px] font-black text-slate-700 uppercase tracking-[0.4em]">• Live Shell Linked</span>
                                 </div>
                             </div>
-                            <div id="main-terminal-body" class="flex-1 p-10 font-mono text-[11px] overflow-y-auto custom-scrollbar bg-black/40 leading-relaxed font-bold tracking-tight"></div>
+                            <!-- Separate containers to prevent clearing logs -->
+                            <div id="scanner-logs-container" class="flex-1 p-10 font-mono text-[11px] overflow-y-auto custom-scrollbar bg-black/40 leading-relaxed font-bold tracking-tight ${this.terminalMode === 'scan' ? '' : 'hidden'}"></div>
+                            <div id="pipeline-logs-container" class="flex-1 p-10 font-mono text-[11px] overflow-y-auto custom-scrollbar bg-black/40 leading-relaxed font-bold tracking-tight ${this.terminalMode === 'pipeline' ? '' : 'hidden'}"></div>
                         </div>
                     </div>`;
                 this.updateTerminalLogs();
             },
 
             updateTerminalLogs() {
-                const body = document.getElementById('main-terminal-body');
-                if (!body) return;
                 const mode = this.terminalMode || 'scan';
+                const containerId = mode === 'scan' ? 'scanner-logs-container' : 'pipeline-logs-container';
+                const body = document.getElementById(containerId);
+                if (!body) return;
+                
                 const logs = mode === 'scan' ? pipelineState.terminalLogs : pipelineState.pipelineLogs;
                 if (!this.renderedIndices) this.renderedIndices = {};
                 if (typeof this.renderedIndices[mode] === 'undefined') this.renderedIndices[mode] = 0;
@@ -1484,18 +1482,24 @@
                 const cur = this.renderedIndices[mode];
                 const unrendered = logs.slice(cur);
                 
+                // Only clear if the logs list is reset (e.g. for a brand new session, but usually we just append)
                 if (cur > logs.length) { body.innerHTML = ''; this.renderedIndices[mode] = 0; }
+                
                 if (unrendered.length > 0) {
                     const html = unrendered.map(log => {
                         const level = (log.level || 'INFO').toUpperCase();
                         const color = level === 'ERROR' ? 'text-rose-500' : level === 'WARNING' ? 'text-amber-400' : level === 'SUCCESS' ? 'text-emerald-400' : 'text-blue-400';
                         const time = log.timestamp || new Date().toLocaleTimeString('en-GB', { hour12: false });
-                        return `<div class="mb-2 flex gap-6 items-start">
+                        return `<div class="mb-2 flex gap-6 items-start opacity-0 animate-in fade-in slide-in-from-left-2 duration-300">
                             <span class="text-slate-700 shrink-0 font-bold">[${time}]</span>
                             <span class="text-emerald-500/80 font-black uppercase tracking-wider text-[10px] w-12">${level}</span>
                             <span class="${color} flex-1 font-medium">${(log.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
                         </div>`;
                     }).join('');
+                    
+                    // Remove placeholder if present
+                    if (body.querySelector('.animate-pulse')) body.innerHTML = '';
+                    
                     body.insertAdjacentHTML('beforeend', html);
                     this.renderedIndices[mode] = logs.length;
                     body.scrollTop = body.scrollHeight;
@@ -1506,10 +1510,28 @@
 
             switchTerminalMode(mode) {
                 this.terminalMode = mode;
-                const body = document.getElementById('main-terminal-body');
-                if (body) body.innerHTML = '';
-                if (this.renderedIndices) this.renderedIndices[mode] = 0;
-                this.renderTerminal(document.getElementById('main-container'));
+                const scanner = document.getElementById('scanner-logs-container');
+                const pipeline = document.getElementById('pipeline-logs-container');
+                const tabScan = document.getElementById('term-tab-scan');
+                const tabPipe = document.getElementById('term-tab-pipeline');
+                
+                if (scanner && pipeline) {
+                    scanner.classList.toggle('hidden', mode !== 'scan');
+                    pipeline.classList.toggle('hidden', mode !== 'pipeline');
+                }
+                
+                if (tabScan && tabPipe) {
+                    tabScan.className = `text-[11px] font-black uppercase tracking-[0.2em] transition-all relative pb-3 min-w-[140px] text-left ${mode === 'scan' ? 'text-blue-400' : 'text-slate-500 hover:text-white'}`;
+                    tabPipe.className = `text-[11px] font-black uppercase tracking-[0.2em] transition-all relative pb-3 min-w-[140px] text-left ${mode === 'pipeline' ? 'text-blue-400' : 'text-slate-500 hover:text-white'}`;
+                    
+                    // Update active bars
+                    const bars = document.querySelectorAll('.h-1.bg-blue-500');
+                    bars.forEach(b => b.remove());
+                    const activeTab = mode === 'scan' ? tabScan : tabPipe;
+                    activeTab.insertAdjacentHTML('beforeend', '<div class="absolute bottom-0 left-0 right-0 h-1 bg-blue-500 rounded-full shadow-[0_0_15px_rgba(59,130,246,0.6)]"></div>');
+                }
+                
+                this.updateTerminalLogs();
             },
 
             showToast(msg, type = 'success') {
@@ -1529,6 +1551,20 @@
 
             copyToClipboard(text) {
                 navigator.clipboard.writeText(text).then(() => this.showToast("Cortex Reference Copied"));
+            },
+
+            async pasteTargetUrl() {
+                try {
+                    const text = await navigator.clipboard.readText();
+                    const input = document.getElementById('custom-url-registry');
+                    if (input) {
+                        input.value = text;
+                        this.showToast("URL Pasted from Clipboard");
+                    }
+                } catch (err) {
+                    console.error('Failed to read clipboard: ', err);
+                    this.showToast("Clipboard access denied", "error");
+                }
             },
 
             showIntelligenceHUD(id) {
@@ -1554,7 +1590,7 @@
                 setInterval(() => {
                     pipelineState.fetchAll();
                     pipelineState.fetchTerminal();
-                }, 3000);
+                }, 1000);
                 router.go('dashboard');
                 lucide.createIcons();
             }
