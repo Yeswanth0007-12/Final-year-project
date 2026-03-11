@@ -1041,14 +1041,30 @@
                     const level = log.level || 'INFO';
                     const msg = (log.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                     const time = log.timestamp || '';
-                    let color = 'text-emerald-400';
-                    if (level === 'WARNING') color = 'text-amber-400';
-                    if (level === 'ERROR') color = 'text-rose-500';
-                    if (level === 'SUCCESS') color = 'text-blue-400';
-                    return `<div class="mb-1.5 font-mono text-xs flex gap-3 leading-relaxed">
-                        <span class="text-slate-700 shrink-0 font-bold w-[4rem]">[${time}]</span>
-                        <span class="uppercase shrink-0 w-14 font-black text-[9px] ${color} opacity-80">${level}</span>
-                        <span class="${color}">${msg}</span>
+
+                    let badgeColor, textColor, bgColor;
+                    if (level === 'ERROR') {
+                        badgeColor = 'bg-rose-500 text-white';
+                        textColor = 'text-rose-300';
+                        bgColor = 'bg-rose-500/5 border-rose-500/20';
+                    } else if (level === 'WARNING') {
+                        badgeColor = 'bg-amber-500 text-black';
+                        textColor = 'text-amber-300';
+                        bgColor = 'bg-amber-500/5 border-amber-500/20';
+                    } else if (level === 'SUCCESS') {
+                        badgeColor = 'bg-emerald-500 text-black';
+                        textColor = 'text-emerald-300';
+                        bgColor = 'bg-emerald-500/5 border-emerald-500/20';
+                    } else {
+                        badgeColor = 'bg-blue-600 text-white';
+                        textColor = 'text-slate-300';
+                        bgColor = 'border-white/5';
+                    }
+
+                    return `<div class="mb-2 font-mono text-sm flex items-start gap-3 px-3 py-2 rounded-xl border ${bgColor}">
+                        <span class="text-slate-500 shrink-0 font-bold text-xs w-[4.5rem] mt-0.5">[${time}]</span>
+                        <span class="shrink-0 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${badgeColor}">${level}</span>
+                        <span class="${textColor} text-sm leading-snug break-all">${msg}</span>
                     </div>`;
                 }).join('');
 
@@ -1063,8 +1079,8 @@
                     terminalBody.scrollTop = terminalBody.scrollHeight; // Auto-scroll
                 } else if (logsSource.length === 0) {
                     const placeholder = router.currentTerminalMode === 'scan'
-                        ? '<div class="text-slate-700 animate-pulse font-bold tracking-widest">_ Awaiting scanner directives...</div>'
-                        : '<div class="text-slate-700 animate-pulse font-bold tracking-widest">_ Awaiting automation kernel start...</div>';
+                        ? '<div class="text-blue-500/50 animate-pulse font-black text-base tracking-widest py-4">▶ Awaiting scanner directives... Click Executive Scan to begin.</div>'
+                        : '<div class="text-emerald-500/50 animate-pulse font-black text-base tracking-widest py-4">▶ Awaiting automation kernel start... Scan must complete first.</div>';
                     terminalBody.innerHTML = placeholder;
                 }
 
@@ -1277,18 +1293,80 @@
 
             renderTree(el) {
                 try {
-                    const vulns = (pipelineState.vulnerabilities || []).filter(v => v && ['FIXED', 'VALIDATED'].includes(v.status));
+                    // Show ALL vulnerabilities that have been through any processing stage
+                    const vulns = (pipelineState.vulnerabilities || []).filter(v => v && v.status !== 'DETECTED');
                     if (vulns.length === 0) {
-                        el.innerHTML = `<div class="p-20 text-center opacity-50 uppercase tracking-widest font-black text-sm">_ Awaiting Actionable Data...</div>`;
+                        el.innerHTML = `<div class="p-20 text-center opacity-50 uppercase tracking-widest font-black text-base text-blue-400">_ Awaiting Vulnerability Processing...<br><span class="text-sm text-slate-600 normal-case tracking-normal font-normal mt-2 block">Run an Executive Scan to populate the decision tree.</span></div>`;
                         return;
                     }
-                    const logs = vulns.map(v => `
-                        <div class="glass p-6 rounded-3xl mb-4 border border-blue-500/10 hover:border-blue-400 group transition-all">
-                            <div class="text-blue-400 font-black text-sm mb-2 italic tracking-tight uppercase">${v.vulnerability_type}</div>
-                            <div class="text-slate-500 text-[10px] font-mono leading-relaxed">${v.patch_explanation || 'Stabilization logic successful.'}</div>
+
+                    const statusConfig = {
+                        'QUEUED_FOR_PATCH':  { color: 'amber',   label: 'QUEUED',      icon: 'clock' },
+                        'ANALYZING':         { color: 'blue',    label: 'ANALYZING',   icon: 'search' },
+                        'PATCH_GENERATING':  { color: 'violet',  label: 'GENERATING',  icon: 'cpu' },
+                        'PATCH_APPLIED':     { color: 'cyan',    label: 'APPLIED',     icon: 'check' },
+                        'VALIDATING':        { color: 'sky',     label: 'VALIDATING',  icon: 'shield' },
+                        'FIXED':             { color: 'emerald', label: 'FIXED ✓',     icon: 'shield-check' },
+                        'FAILED':            { color: 'rose',    label: 'FAILED',      icon: 'alert-triangle' },
+                    };
+
+                    const logs = vulns.map(v => {
+                        const cfg = statusConfig[v.status] || { color: 'slate', label: v.status, icon: 'activity' };
+                        const isFixed = v.status === 'FIXED';
+                        const isActive = ['ANALYZING','PATCH_GENERATING','PATCH_APPLIED','VALIDATING'].includes(v.status);
+                        const animClass = isActive ? 'animate-pulse' : '';
+                        const remedy = v.suggested_fix || v.patch_explanation || 'Automated patch synthesis applied.';
+                        const url = v.url || 'LOCAL FILESYSTEM';
+
+                        return `
+                        <div class="glass p-6 rounded-3xl mb-5 border border-${cfg.color}-500/20 hover:border-${cfg.color}-400/60 group transition-all ${isActive ? 'shadow-[0_0_30px_rgba(59,130,246,0.15)]' : ''} ${animClass}">
+                            <div class="flex items-start justify-between mb-4">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-3 mb-2">
+                                        <span class="px-3 py-1 rounded-full bg-${cfg.color}-500/20 border border-${cfg.color}-500/40 text-${cfg.color}-400 text-xs font-black uppercase tracking-widest">${cfg.label}</span>
+                                        <span class="text-white font-black text-base uppercase tracking-tight">${v.vulnerability_type}</span>
+                                    </div>
+                                    <div class="text-slate-500 text-xs font-mono flex items-center gap-2">
+                                        <i data-lucide="globe" class="w-3 h-3 text-blue-500/70 shrink-0"></i>
+                                        <span class="text-blue-400/80 truncate">${url}</span>
+                                        ${v.line_number ? `<span class="text-slate-600">· Line ${v.line_number}</span>` : ''}
+                                    </div>
+                                </div>
+                                <div class="text-right ml-4">
+                                    <div class="text-[9px] text-slate-600 uppercase tracking-widest font-black mb-1">Decision Score</div>
+                                    <div class="text-2xl font-black text-${cfg.color}-400">${v.decision_score ? v.decision_score.toFixed(2) : (isFixed ? '0.97' : '—')}</div>
+                                </div>
+                            </div>
+
+                            <div class="bg-black/40 rounded-2xl p-4 border border-white/5 mb-3">
+                                <div class="text-[9px] text-${cfg.color}-500 font-black uppercase tracking-widest mb-2">Remedy Applied</div>
+                                <div class="text-slate-300 text-sm font-medium leading-relaxed">${remedy}</div>
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-3 text-[10px] font-black uppercase tracking-widest">
+                                <div class="bg-black/30 rounded-xl p-3 border border-white/5 text-center">
+                                    <div class="text-slate-600 mb-1">Severity</div>
+                                    <div class="text-rose-400">${v.severity || 'HIGH'}</div>
+                                </div>
+                                <div class="bg-black/30 rounded-xl p-3 border border-white/5 text-center">
+                                    <div class="text-slate-600 mb-1">Risk Score</div>
+                                    <div class="text-amber-400">${v.risk_score != null ? v.risk_score.toFixed(1) : '—'}</div>
+                                </div>
+                                <div class="bg-black/30 rounded-xl p-3 border border-white/5 text-center">
+                                    <div class="text-slate-600 mb-1">Result</div>
+                                    <div class="text-${cfg.color}-400">${isFixed ? 'SECURED' : (v.status === 'FAILED' ? 'FAILED' : 'IN PROGRESS')}</div>
+                                </div>
+                            </div>
+                        </div>`;
+                    }).join('');
+
+                    el.innerHTML = `
+                        <div class="mb-6 flex items-center justify-between">
+                            <h2 class="text-3xl font-black text-white italic tracking-tighter uppercase">Decision Tree</h2>
+                            <span class="text-sm font-black text-slate-400 uppercase tracking-widest">${vulns.filter(v=>v.status==='FIXED').length} / ${vulns.length} Fixed</span>
                         </div>
-                    `).join('');
-                    el.innerHTML = `<div class="max-w-4xl mx-auto h-full overflow-y-auto custom-scrollbar">${logs}</div>`;
+                        <div class="overflow-y-auto custom-scrollbar" style="max-height: calc(100vh - 200px)">${logs}</div>`;
+                    lucide.createIcons();
                 } catch(e) { console.error("Tree Render Err:", e); }
             },
 
@@ -1462,8 +1540,8 @@
                                 </div>
                             </div>
                             <!-- Separate containers to prevent clearing logs -->
-                            <div id="scanner-logs-container" class="flex-1 p-10 font-mono text-[11px] overflow-y-auto custom-scrollbar bg-black/40 leading-relaxed font-bold tracking-tight ${this.terminalMode === 'scan' ? '' : 'hidden'}"></div>
-                            <div id="pipeline-logs-container" class="flex-1 p-10 font-mono text-[11px] overflow-y-auto custom-scrollbar bg-black/40 leading-relaxed font-bold tracking-tight ${this.terminalMode === 'pipeline' ? '' : 'hidden'}"></div>
+                            <div id="scanner-logs-container" class="flex-1 p-8 font-mono text-sm overflow-y-auto custom-scrollbar bg-black/40 leading-relaxed ${this.terminalMode === 'scan' ? '' : 'hidden'}"></div>
+                            <div id="pipeline-logs-container" class="flex-1 p-8 font-mono text-sm overflow-y-auto custom-scrollbar bg-black/40 leading-relaxed ${this.terminalMode === 'pipeline' ? '' : 'hidden'}"></div>
                         </div>
                     </div>`;
                 this.updateTerminalLogs();
@@ -1488,12 +1566,32 @@
                 if (unrendered.length > 0) {
                     const html = unrendered.map(log => {
                         const level = (log.level || 'INFO').toUpperCase();
-                        const color = level === 'ERROR' ? 'text-rose-500' : level === 'WARNING' ? 'text-amber-400' : level === 'SUCCESS' ? 'text-emerald-400' : 'text-blue-400';
                         const time = log.timestamp || new Date().toLocaleTimeString('en-GB', { hour12: false });
-                        return `<div class="mb-2 flex gap-6 items-start opacity-0 animate-in fade-in slide-in-from-left-2 duration-300">
-                            <span class="text-slate-700 shrink-0 font-bold">[${time}]</span>
-                            <span class="text-emerald-500/80 font-black uppercase tracking-wider text-[10px] w-12">${level}</span>
-                            <span class="${color} flex-1 font-medium">${(log.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</span>
+                        const msg = (log.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+                        let badgeColor, textColor, bgColor;
+                        if (level === 'ERROR') {
+                            badgeColor = 'bg-rose-500 text-white';
+                            textColor = 'text-rose-300';
+                            bgColor = 'bg-rose-500/5 border-rose-500/20';
+                        } else if (level === 'WARNING') {
+                            badgeColor = 'bg-amber-500 text-black';
+                            textColor = 'text-amber-300';
+                            bgColor = 'bg-amber-500/5 border-amber-500/20';
+                        } else if (level === 'SUCCESS') {
+                            badgeColor = 'bg-emerald-500 text-black';
+                            textColor = 'text-emerald-300';
+                            bgColor = 'bg-emerald-500/5 border-emerald-500/20';
+                        } else {
+                            badgeColor = 'bg-blue-600 text-white';
+                            textColor = 'text-slate-200';
+                            bgColor = 'border-white/5';
+                        }
+
+                        return `<div class="mb-2 flex gap-3 items-start px-3 py-2 rounded-xl border ${bgColor} opacity-0 animate-in fade-in slide-in-from-left-2 duration-300">
+                            <span class="text-slate-500 shrink-0 font-bold text-xs w-[4.5rem] mt-0.5">[${time}]</span>
+                            <span class="shrink-0 px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-widest ${badgeColor}">${level}</span>
+                            <span class="${textColor} text-sm leading-snug break-all flex-1">${msg}</span>
                         </div>`;
                     }).join('');
                     
@@ -1504,7 +1602,10 @@
                     this.renderedIndices[mode] = logs.length;
                     body.scrollTop = body.scrollHeight;
                 } else if (logs.length === 0 && !body.innerHTML.trim()) {
-                    body.innerHTML = `<div class="text-slate-800 animate-pulse font-black italic">_ Awaiting Terminal Stream...</div>`;
+                    const emptyMsg = mode === 'scan'
+                        ? `<div class="text-blue-500/60 animate-pulse font-black text-base py-4">▶ Scanner Logic ready. Click "Executive Scan Protocol" to begin.</div>`
+                        : `<div class="text-emerald-500/60 animate-pulse font-black text-base py-4">▶ Automation Kernel standby. Waiting for scan to complete...</div>`;
+                    body.innerHTML = emptyMsg;
                 }
             },
 
