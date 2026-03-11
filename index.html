@@ -394,19 +394,19 @@
             lastPage: null, // Track page for stability
 
             init() {
-                // Restore state from persistence
-                this.currentScanId = localStorage.getItem('seclab_current_scan_id') || 'default';
-                this.activeVulnId = localStorage.getItem('seclab_active_vuln_id') || null;
+                // Wipe frontend persistence on every reload to match the backend's fresh state
+                localStorage.clear();
+                
+                this.currentScanId = 'default';
+                this.activeVulnId = null;
                 pipelineState.currentScanId = this.currentScanId;
                 pipelineState.activeVulnId = this.activeVulnId;
                 
-                // Restore logs
-                try {
-                    pipelineState.terminalLogs = JSON.parse(localStorage.getItem('seclab_terminal_logs') || '[]');
-                    pipelineState.pipelineLogs = JSON.parse(localStorage.getItem('seclab_pipeline_logs') || '[]');
-                    pipelineState.scanLastIndex = parseInt(localStorage.getItem('seclab_scan_last_index') || '0');
-                    pipelineState.pipeLastIndex = parseInt(localStorage.getItem('seclab_pipe_last_index') || '0');
-                } catch(e) { console.warn("Log restoration failed", e); }
+                // Start with completely fresh logs
+                pipelineState.terminalLogs = [];
+                pipelineState.pipelineLogs = [];
+                pipelineState.scanLastIndex = 0;
+                pipelineState.pipeLastIndex = 0;
 
                 router.go('dashboard');
                 pipelineState.fetchAll(); // Fetch data immediately

@@ -175,6 +175,31 @@ print(f"[INIT] DEPLOYED VERSION {APP_VERSION}")
 
 app = FastAPI(title="SecLAB Centralized Pipeline")
 
+@app.on_event("startup")
+async def startup_event():
+    """Wipe the database and memory clean on every restart for a completely fresh demonstration state."""
+    print("[SYSTEM] INITIALIZATION: Wiping existing database state for a fresh start...")
+    # Drop all tables and recreate them entirely empty
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    
+    # Clear all in-memory tracking dictionaries and queues
+    global terminal_sessions, scan_queue, active_scan, queuing_active, scan_sessions_data
+    terminal_sessions.clear()
+    scan_queue.clear()
+    scan_sessions_data.clear()
+    active_scan = None
+    queuing_active = False
+    
+    # Empty the thread-safe patch queue
+    while not patch_queue.empty():
+        try:
+            patch_queue.get_nowait()
+        except queue.Empty:
+            break
+            
+    print("[SYSTEM] INITIALIZATION COMPLETE: All systems ready in pure baseline state.")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
