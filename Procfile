@@ -1,1 +1,1 @@
-web: gunicorn -k uvicorn.workers.UvicornWorker server:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+web: uvicorn server:app --host 0.0.0.0 --port $PORT --timeout-keep-alive 120
